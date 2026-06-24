@@ -1093,41 +1093,41 @@
                 trackingId = navigator.geolocation.watchPosition(
                     (position) => {
                         const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        const accuracy = position.coords.accuracy;
-                        
-                        drawLocationMarker(lat, lng, accuracy);
-                        // ให้แผนที่เลื่อนตามเบาๆ โดยไม่เปลี่ยน Zoom level
-                        map.panTo([lat, lng], { animate: true, duration: 1 });
-                    },
-                    (error) => {
-                        console.error("Tracking Error Code:", error.code, "Message:", error.message);
-                        let errorMsg = 'สัญญาณ GPS ขัดข้อง';
-                        if (error.code === 1) {
-                            errorMsg = 'โปรดอนุญาตการเข้าถึงตำแหน่งในเบราว์เซอร์';
-                        } else if (error.code === 2) {
-                            errorMsg = 'ไม่พบสัญญาณพิกัดตำแหน่ง (อาจอยู่ในที่อับสัญญาณ)';
-                        } else if (error.code === 3) {
-                            errorMsg = 'หมดเวลาค้นหาตำแหน่ง (Timeout)';
-                        }
+                    const lng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+                    
+                    drawLocationMarker(lat, lng, accuracy);
+                    // ให้แผนที่เลื่อนตามเบาๆ โดยไม่เปลี่ยน Zoom level
+                    map.panTo([lat, lng], { animate: true, duration: 1 });
+                },
+                (error) => {
+                    console.error("Tracking Error Code:", error.code, "Message:", error.message);
+                    let errorMsg = 'สัญญาณ GPS ขัดข้อง';
+                    if (error.code === 1) {
+                        errorMsg = 'โปรดอนุญาตการเข้าถึงตำแหน่งในเบราว์เซอร์';
+                    } else if (error.code === 2) {
+                        errorMsg = 'ไม่พบสัญญาณพิกัดตำแหน่ง (อาจอยู่ในที่อับสัญญาณ)';
+                    } else if (error.code === 3) {
+                        errorMsg = 'หมดเวลาค้นหาตำแหน่ง (Timeout)';
+                    }
 
-                        // ปิดโหมดติดตามอัตโนมัติเมื่อเกิด Error จะได้ไม่แจ้งเตือนรัวๆ
-                        if (isTracking) {
-                            isTracking = false;
-                            navigator.geolocation.clearWatch(trackingId);
-                            trackingId = null;
-                            btn.innerHTML = `<i class="fa-solid fa-person-walking"></i> โหมดติดตาม`;
-                            btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium";
-                        }
+                    // ปิดโหมดติดตามอัตโนมัติเมื่อเกิด Error จะได้ไม่แจ้งเตือนรัวๆ
+                    if (isTracking) {
+                        isTracking = false;
+                        navigator.geolocation.clearWatch(trackingId);
+                        trackingId = null;
+                        btn.innerHTML = `<i class="fa-solid fa-person-walking"></i> โหมดติดตาม`;
+                        btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium";
+                    }
 
-                        Swal.fire({ icon: 'error', title: errorMsg, toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 });
-                    },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                );
+                    Swal.fire({ icon: 'error', title: errorMsg, toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 });
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
 
-            } else {
-                // หยุด Tracking
-                isTracking = false;
+        } else {
+            // หยุด Tracking
+            isTracking = false;
                 navigator.geolocation.clearWatch(trackingId);
                 trackingId = null;
                 
