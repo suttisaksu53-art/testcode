@@ -1,0 +1,1962 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบวางแผนการเก็บตัวอย่างดิน (Soil Sampling Planner)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap');
+        
+        body { font-family: 'Prompt', sans-serif; background-color: #f3f4f6; }
+        
+        #map { height: 100%; width: 100%; z-index: 10; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #059669; }
+
+        /* Custom UI for layers control */
+        .leaflet-control-layers { font-family: 'Prompt', sans-serif; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        
+        /* Shapefile Label Style */
+        .shp-label-tooltip {
+            background: rgba(255, 255, 255, 0.85);
+            border: 1px solid #10b981;
+            border-radius: 4px;
+            color: #047857;
+            font-weight: 600;
+            font-size: 11px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            padding: 2px 6px;
+            white-space: nowrap;
+        }
+
+        /* Point Label Style */
+        .point-label-tooltip {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #6b7280;
+            border-radius: 4px;
+            color: #1f2937;
+            font-weight: 600;
+            font-size: 10px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            padding: 2px 5px;
+            white-space: nowrap;
+        }
+
+        /* Override Leaflet Cursor to Normal Arrow */
+        .leaflet-container, .leaflet-grab, .leaflet-grab:active {
+            cursor: default !important;
+        }
+
+        /* Highlight Selected Layer in List */
+        .layer-item.active {
+            border-color: #10b981;
+            background-color: #ecfdf5;
+        }
+        
+        /* Animated Polyline for Route */
+        .route-line {
+            animation: dash 10s linear infinite;
+        }
+        @keyframes dash {
+            to { stroke-dashoffset: -100; }
+        }
+        
+        /* Pulsing animation for tracking button */
+        .pulse-bg {
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body class="flex flex-col h-[100dvh] overflow-hidden">
+
+    <!-- Header -->
+    <header class="h-16 bg-emerald-700 text-white shadow-md flex items-center justify-between px-4 md:px-6 z-40 shrink-0 relative">
+        <div class="flex items-center gap-3">
+            <button id="mobile-menu-btn" class="md:hidden text-white hover:text-emerald-200 focus:outline-none transition-transform active:scale-95 p-2 -ml-2">
+                <i class="fa-solid fa-bars text-2xl"></i>
+            </button>
+            <i class="fa-solid fa-leaf text-2xl text-emerald-300 hidden sm:block"></i>
+            <h1 class="text-lg md:text-xl font-semibold truncate">ระบบวางแผนการเก็บตัวอย่างดิน</h1>
+        </div>
+        <div class="text-sm text-emerald-100 hidden md:block">
+            Advanced Soil Sampling Planner
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex flex-1 overflow-hidden relative w-full">
+        
+        <!-- Mobile Overlay -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/60 z-20 hidden md:hidden backdrop-blur-sm transition-opacity"></div>
+        
+        <!-- Sidebar -->
+        <aside id="sidebar" class="absolute md:relative z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out w-[280px] md:w-80 bg-white shadow-xl flex flex-col h-full border-r border-gray-200 overflow-y-auto">
+            
+            <!-- Mobile Close Button -->
+            <div class="md:hidden p-3 border-b border-gray-100 flex justify-between items-center bg-emerald-50 shrink-0">
+                <span class="font-semibold text-emerald-800"><i class="fa-solid fa-bars-staggered mr-2"></i>เมนูจัดการ</span>
+                <button id="close-sidebar-btn" class="text-gray-500 hover:text-red-500 p-1 transition-colors">
+                    <i class="fa-solid fa-xmark text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- 1. Search Province & Current Location -->
+            <div class="p-3 border-b border-gray-100 bg-gray-50 shrink-0">
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <i class="fa-solid fa-location-dot text-emerald-600 mr-2"></i>ค้นหาพื้นที่ / ตำแหน่ง
+                </label>
+                
+                <!-- Search Place Input -->
+                <div class="flex gap-2 mb-2">
+                    <input type="text" id="place-search-input" class="w-full border border-gray-300 rounded p-1.5 text-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="พิมพ์ชื่อสถานที่, ตำบล, อำเภอ...">
+                    <button id="place-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 rounded shadow-sm transition" title="ค้นหาสถานที่">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </button>
+                </div>
+
+                <select id="province-select" class="w-full border border-gray-300 rounded p-1.5 text-sm focus:ring-emerald-500 focus:border-emerald-500 mb-2">
+                    <option value="">-- หรือเลือกจังหวัดทางลัด --</option>
+                </select>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="current-location-btn" class="w-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium">
+                        <i class="fa-solid fa-location-crosshairs"></i> ดึงตำแหน่งปัจจุบัน
+                    </button>
+                    <!-- ปุ่มเปิดโหมดติดตามแบบเรียลไทม์ -->
+                    <button id="track-location-btn" class="w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium">
+                        <i class="fa-solid fa-person-walking"></i> โหมดติดตาม
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Shapefile Setup (Multiple Layers) -->
+            <div class="p-3 border-b border-gray-100 shrink-0">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fa-solid fa-layer-group text-emerald-600 mr-2"></i>ชั้นข้อมูลแผนที่ (Shapefile)
+                </label>
+                
+                <div class="bg-blue-50 border border-blue-100 rounded p-2 mb-2 text-[10px] text-blue-800 leading-tight">
+                    <b><i class="fa-solid fa-circle-info"></i> รูปแบบไฟล์ที่รองรับ:</b> นำไฟล์ <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> และ <code>.prj</code> บีบอัดรวมเป็นไฟล์ <b>.zip</b> เดียว
+                </div>
+                
+                <!-- แก้ไขเพิ่ม */* ให้มือถือสามารถกดเลือกไฟล์ได้อิสระขึ้น -->
+                <input type="file" id="shp-upload" accept=".zip,.rar,application/zip,application/x-zip-compressed,*/*" class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 mb-2 cursor-pointer">
+                
+                <!-- รายการชั้นข้อมูลที่ถูกอัปโหลด -->
+                <ul id="loaded-shp-list" class="space-y-1 max-h-40 overflow-y-auto mb-2">
+                    <!-- รายการ Layer จะถูกเพิ่มที่นี่ -->
+                </ul>
+
+                <!-- แผงตั้งค่า Layer ที่เลือก (ซ่อนไว้จนกว่าจะมี Layer) -->
+                <div id="shp-style-panel" class="hidden mt-3 border-t border-gray-200 pt-3 bg-gray-50 p-2 rounded shadow-inner">
+                    <div class="flex justify-between items-center mb-2 pb-1 border-b border-gray-200">
+                        <span class="text-xs font-semibold text-emerald-800" id="current-shp-name">กำลังปรับแต่ง: ...</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-gray-500 block">สีเริ่มต้น</label>
+                            <input type="color" id="shp-color" value="#0ea5e9" class="w-full h-6 cursor-pointer border-none rounded">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-gray-500 block">ความโปร่งแสง</label>
+                            <input type="range" id="shp-opacity" min="0" max="1" step="0.1" value="0.5" class="w-full accent-emerald-600 mt-1">
+                        </div>
+                    </div>
+                    
+                    <!-- ขนาดจุด สำหรับข้อมูลแบบ Point -->
+                    <div class="mt-2">
+                        <label class="text-[10px] text-gray-500 block flex justify-between">
+                            <span>ขนาดจุด (สำหรับ Point)</span>
+                            <span id="shp-point-size-val" class="font-semibold text-emerald-600">6</span>
+                        </label>
+                        <input type="range" id="shp-point-size" min="2" max="20" step="1" value="6" class="w-full accent-emerald-600 mt-1">
+                    </div>
+
+                    <!-- Advanced Shapefile Options (Symbology & Labels) -->
+                    <div class="mt-3 border-t border-gray-200 pt-2">
+                        <label class="text-[10px] text-emerald-700 font-semibold block mb-1"><i class="fa-solid fa-tags mr-1"></i>แยกสีตามข้อมูล (Categorized)</label>
+                        <select id="shp-category-field" class="w-full border border-gray-300 rounded p-1 text-xs mb-2 bg-white">
+                            <option value="">-- สีเดียวทั้งหมด --</option>
+                        </select>
+                        
+                        <label class="text-[10px] text-emerald-700 font-semibold block mb-1"><i class="fa-solid fa-font mr-1"></i>แสดงป้ายชื่อ (Labels)</label>
+                        <select id="shp-label-field" class="w-full border border-gray-300 rounded p-1 text-xs mb-3 bg-white">
+                            <option value="">-- ไม่แสดงป้ายชื่อ --</option>
+                        </select>
+                        
+                        <button id="apply-shp-style-btn" class="w-full bg-emerald-600 text-white hover:bg-emerald-700 text-xs py-1.5 rounded transition font-medium shadow-sm">
+                            <i class="fa-solid fa-check mr-1"></i> นำการตั้งค่าไปใช้
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Point Setup -->
+            <div class="p-3 border-b border-gray-100 bg-gray-50 shrink-0">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fa-solid fa-palette text-emerald-600 mr-2"></i>รูปแบบปักจุดเก็บตัวอย่าง
+                </label>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] text-gray-500 block">รูปร่าง</label>
+                        <select id="point-shape" class="w-full border border-gray-300 rounded p-1 text-xs">
+                            <option value="circle">วงกลม</option>
+                            <option value="square">สี่เหลี่ยม</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-gray-500 block">สีของจุด</label>
+                        <input type="color" id="point-color" value="#ef4444" class="w-full h-6 cursor-pointer border-none rounded">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Project Workspace (Save/Load Project) -->
+            <div class="p-3 border-b border-gray-100 shrink-0">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fa-solid fa-folder-open text-emerald-600 mr-2"></i>โปรเจกต์พื้นที่ทำงาน (Workspace)
+                </label>
+                <div class="grid grid-cols-2 gap-2 mb-1">
+                    <button id="save-project-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs py-1.5 px-2 rounded text-center transition flex items-center justify-center gap-1 shadow-sm">
+                        <i class="fa-solid fa-floppy-disk"></i> เซฟโปรเจกต์
+                    </button>
+                    <label class="bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 text-xs py-1.5 px-2 rounded text-center cursor-pointer transition flex items-center justify-center gap-1 shadow-sm">
+                        <i class="fa-solid fa-folder-tree"></i> เปิดโปรเจกต์
+                        <!-- แก้ไขเพิ่ม */* และ MIME type สำหรับมือถือ -->
+                        <input type="file" id="load-project-upload" accept=".json,application/json,.txt,*/*" class="hidden">
+                    </label>
+                </div>
+                <p class="text-[9px] text-gray-500 leading-tight">* บันทึกเลเยอร์ Shapefile และจุดพิกัดทั้งหมดเก็บไว้ในเครื่องเพื่อนำมาเปิดใช้งานต่อได้ทันที</p>
+            </div>
+
+            <!-- 5. Data Import/Export (Excel/CSV/SHP) -->
+            <div class="p-3 border-b border-gray-100 shrink-0">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fa-solid fa-file-export text-emerald-600 mr-2"></i>จัดการข้อมูลปักจุด
+                </label>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <label class="col-span-2 bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 text-xs py-1.5 px-2 rounded text-center cursor-pointer transition flex items-center justify-center gap-1">
+                        <i class="fa-solid fa-upload"></i> นำเข้าจุด (Excel/CSV)
+                        <!-- แก้ไขเพิ่ม MIME type และ */* ให้มือถือสามารถมองเห็นไฟล์ Excel/CSV -->
+                        <input type="file" id="excel-upload" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,*/*" class="hidden">
+                    </label>
+                    <button id="export-excel-btn" class="bg-green-600 hover:bg-green-700 text-white text-xs py-1.5 px-2 rounded text-center transition flex items-center justify-center gap-1">
+                        <i class="fa-solid fa-file-excel"></i> ส่งออก Excel
+                    </button>
+                    <button id="export-shp-btn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 px-2 rounded text-center transition flex items-center justify-center gap-1" title="ส่งออกเป็น Shapefile (.zip)">
+                        <i class="fa-solid fa-map-location-dot"></i> ส่งออก SHP
+                    </button>
+                </div>
+            </div>
+
+            <!-- 6. Map Actions (Tools) -->
+            <div class="p-3 border-b border-gray-100 bg-gray-50 shrink-0">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fa-solid fa-toolbox text-emerald-600 mr-2"></i>เครื่องมือแผนที่
+                </label>
+                
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <button id="plan-route-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 rounded shadow flex items-center justify-center gap-1 transition" title="วางแผนเส้นทางถนนที่ใกล้ที่สุด">
+                        <i class="fa-solid fa-route"></i> วางแผนเดินทาง
+                    </button>
+                    <!-- ปุ่มแชร์แผนเดินทาง ถูกปิดการทำงานไว้ก่อนจนกว่าจะคำนวณเส้นทางเสร็จ -->
+                    <button id="share-route-btn" class="w-full bg-indigo-500 text-white text-xs py-2 rounded shadow flex items-center justify-center gap-1 transition opacity-50 cursor-not-allowed" disabled title="ต้องวางแผนเส้นทางก่อน จึงจะแชร์ได้">
+                        <i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง
+                    </button>
+                    <button id="share-line-btn" class="w-full bg-[#00B900] hover:bg-[#009900] text-white text-xs py-2 rounded shadow flex items-center justify-center gap-1 transition" title="แชร์ข้อมูลจุดทั้งหมด (ไม่เรียงลำดับ) พร้อมลิงก์ฝังพิกัด">
+                        <i class="fa-brands fa-line text-sm"></i> แชร์ลิงก์/พิกัด
+                    </button>
+                    <!-- นำปุ่ม Save ภาพแผนที่ กลับมา -->
+                    <button id="export-img-btn" class="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs py-2 rounded shadow flex items-center justify-center gap-1 transition" title="บันทึกแผนที่เป็นภาพ Layout">
+                        <i class="fa-solid fa-image"></i> Save รูป
+                    </button>
+                </div>
+
+                <div class="mt-2">
+                    <button id="clear-btn" class="w-full bg-red-500 hover:bg-red-600 text-white text-xs py-2 rounded shadow flex items-center justify-center gap-1 transition">
+                        <i class="fa-solid fa-trash-can"></i> ล้างกระดานทั้งหมด
+                    </button>
+                </div>
+            </div>
+
+            <!-- 7. Point List -->
+            <div class="p-3 pb-24">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-sm font-medium text-gray-700">
+                        <i class="fa-solid fa-map-pin text-emerald-600 mr-2"></i>รายการปักจุด (<span id="point-count-num">0</span>)
+                    </label>
+                    <span id="point-count" class="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2 py-0.5 rounded-full">0 จุด</span>
+                </div>
+                
+                <ul id="points-list" class="space-y-2 pr-1">
+                    <!-- Points appended here -->
+                </ul>
+            </div>
+            
+        </aside>
+
+        <!-- Map Container -->
+        <div class="flex-1 relative w-full h-full" id="map-wrapper">
+            <div id="map" class="absolute inset-0 bg-white"></div>
+        </div>
+        
+    </main>
+
+    <!-- Scripts -->
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- html2canvas for Layout Exporting (Save รูป) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- shp-write for Exporting Shapefile -->
+    <script src="https://unpkg.com/shp-write@0.3.2/shpwrite.js"></script>
+    <script>
+        // เก็บ JSZip v2 ของ shpwrite ไว้ก่อนที่ไลบรารีอื่นจะมาทับ
+        window.__JSZip_v2 = window.JSZip;
+    </script>
+    
+    <!-- shpjs for Shapefile Parsing -->
+    <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
+    
+    <!-- SheetJS for Excel/CSV Import/Export -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script>
+        // เก็บ JSZip v3 (ของ SheetJS/shpjs) ไว้
+        window.__JSZip_v3 = window.JSZip;
+    </script>
+
+    <script>
+        // --- 1. Map Initialization & Layers ---
+        const map = L.map('map', {
+            center: [13.736717, 100.523186],
+            zoom: 6,
+            preferCanvas: true,
+            zoomSnap: 0.25,      
+            zoomDelta: 0.25,     
+            wheelPxPerZoomLevel: 100 
+        });
+
+        const terrainLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
+            maxZoom: 20, attribution: '&copy; Google Maps', crossOrigin: true
+        });
+
+        const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            maxZoom: 20, attribution: '&copy; Google Maps', crossOrigin: true
+        });
+
+        satelliteLayer.addTo(map);
+
+        L.control.scale({ imperial: false, metric: true, position: 'bottomleft' }).addTo(map);
+
+        const baseMaps = {
+            "ภูมิประเทศ (Terrain)": terrainLayer,
+            "ดาวเทียม (Satellite)": satelliteLayer
+        };
+        L.control.layers(baseMaps, null, {position: 'topright'}).addTo(map);
+
+
+        // --- 2. State Management ---
+        let samplePoints = [];
+        let pointIdCounter = 1;
+        let routeLayer = null; 
+        let currentLocationMarker = null; 
+        let currentLocationCircle = null; 
+        let currentPlannedRoute = null; 
+        
+        let trackingId = null; // เก็บ ID สำหรับการติดตามแบบ Real-time
+        let isTracking = false;
+        
+        const segmentColors = ['#FF1493', '#00FFFF', '#FFFF00', '#39FF14', '#FF9900', '#CC00FF', '#FF0000', '#00FF00', '#FFD700', '#00BFFF'];
+
+        let shpLayers = {}; 
+        let shpLayerOrder = []; 
+        let activeShpId = null;
+
+        // --- 3. Dynamic Point Styling Functions ---
+        function getCustomIcon() {
+            const color = document.getElementById('point-color').value;
+            const shape = document.getElementById('point-shape').value;
+            const radius = shape === 'circle' ? '50%' : '2px';
+            
+            return L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: ${radius}; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5);"></div>`,
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            });
+        }
+
+        function updateAllPointsStyle() {
+            const newIcon = getCustomIcon();
+            samplePoints.forEach(pt => {
+                pt.marker.setIcon(newIcon);
+            });
+        }
+
+        document.getElementById('point-color').addEventListener('input', updateAllPointsStyle);
+        document.getElementById('point-shape').addEventListener('change', updateAllPointsStyle);
+
+
+        // --- 4. Advanced Shapefile Logic (Multiple Layers & Z-Index) ---
+        function applyLayerZIndex() {
+            shpLayerOrder.forEach(id => {
+                const shp = shpLayers[id];
+                if (shp && shp.layer && map.hasLayer(shp.layer)) {
+                    shp.layer.bringToFront();
+                }
+            });
+            if (routeLayer) routeLayer.bringToFront();
+            if (currentLocationMarker) {
+                currentLocationCircle.bringToFront();
+                currentLocationMarker.bringToFront();
+            }
+        }
+
+        function getCategoryColor(catColorsObj, val) {
+            if(!catColorsObj[val]) {
+                const hue = Math.floor(Math.random() * 360);
+                catColorsObj[val] = `hsl(${hue}, 70%, 50%)`;
+            }
+            return catColorsObj[val];
+        }
+
+        function renderSingleShapefile(id) {
+            const shpData = shpLayers[id];
+            if (!shpData || !shpData.geojson) return;
+
+            if (shpData.layer) {
+                map.removeLayer(shpData.layer);
+            }
+
+            shpData.layer = L.geoJSON(shpData.geojson, {
+                pointToLayer: function (feature, latlng) {
+                    return L.circleMarker(latlng, {
+                        radius: shpData.pointSize,
+                        weight: 1,
+                        color: '#ffffff'
+                    });
+                },
+                style: function(feature) {
+                    let color = shpData.color;
+                    if(shpData.catField && feature.properties && feature.properties[shpData.catField] !== undefined) {
+                        color = getCategoryColor(shpData.categoryColors, feature.properties[shpData.catField]);
+                    }
+                    return {
+                        color: color,
+                        weight: 2,
+                        fillColor: color,
+                        fillOpacity: shpData.opacity
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    if(shpData.labelField && feature.properties && feature.properties[shpData.labelField] !== undefined) {
+                        const lblText = String(feature.properties[shpData.labelField]);
+                        layer.bindTooltip(lblText, {
+                            permanent: true,
+                            direction: 'center',
+                            className: 'shp-label-tooltip'
+                        });
+                    }
+
+                    layer.on('click', function(e) {
+                        addPointToMap(e.latlng.lat, e.latlng.lng);
+                    });
+
+                    if (feature.properties) {
+                        let popupHtml = `<div class="text-xs">`;
+                        for (let key in feature.properties) {
+                            popupHtml += `<b>${key}:</b> ${feature.properties[key]}<br/>`;
+                        }
+                        popupHtml += `</div>`;
+                        layer.bindPopup(popupHtml);
+                    }
+                }
+            });
+
+            if (shpData.visible !== false) {
+                shpData.layer.addTo(map);
+            }
+
+            applyLayerZIndex();
+        }
+
+        function applyActiveShapefileStyle() {
+            if (!activeShpId || !shpLayers[activeShpId]) return;
+            
+            const shp = shpLayers[activeShpId];
+            shp.color = document.getElementById('shp-color').value;
+            shp.opacity = parseFloat(document.getElementById('shp-opacity').value);
+            shp.pointSize = parseInt(document.getElementById('shp-point-size').value);
+            shp.catField = document.getElementById('shp-category-field').value;
+            shp.labelField = document.getElementById('shp-label-field').value;
+
+            renderSingleShapefile(activeShpId);
+        }
+        
+        document.getElementById('apply-shp-style-btn').addEventListener('click', applyActiveShapefileStyle);
+        
+        document.getElementById('shp-point-size').addEventListener('input', function(e) {
+            document.getElementById('shp-point-size-val').textContent = e.target.value;
+        });
+
+        function updateShapefileListUI() {
+            const listEl = document.getElementById('loaded-shp-list');
+            listEl.innerHTML = '';
+            
+            if (shpLayerOrder.length === 0) {
+                document.getElementById('shp-style-panel').classList.add('hidden');
+                activeShpId = null;
+                return;
+            }
+
+            [...shpLayerOrder].reverse().forEach(id => {
+                const shp = shpLayers[id];
+                if(!shp) return;
+
+                const li = document.createElement('li');
+                const isActive = (id === activeShpId);
+                const isVisible = shp.visible !== false;
+                
+                li.className = `layer-item flex justify-between items-center py-1.5 px-2 rounded border cursor-pointer transition ${isActive ? 'active' : 'border-gray-200 bg-white hover:bg-gray-50'} ${isVisible ? '' : 'opacity-60 grayscale'}`;
+                
+                const eyeIcon = isVisible ? 'fa-eye text-emerald-600' : 'fa-eye-slash text-gray-400';
+
+                li.innerHTML = `
+                    <div class="flex items-center gap-1.5 overflow-hidden flex-1" onclick="selectShapefile('${id}')">
+                        <span style="background-color:${shp.color};" class="w-2.5 h-2.5 rounded-full border border-gray-400 shrink-0"></span>
+                        <span class="text-[11px] font-medium text-gray-700 truncate leading-tight">${shp.name}</span>
+                    </div>
+                    <div class="flex items-center shrink-0 ml-1">
+                        <button onclick="toggleLayerVisibility('${id}', event)" class="hover:text-emerald-600 px-1" title="ซ่อน/แสดงชั้นข้อมูล">
+                            <i class="fa-solid ${eyeIcon} text-[10px]"></i>
+                        </button>
+                        <button onclick="moveLayerUp('${id}', event)" class="text-gray-400 hover:text-emerald-600 px-1" title="เลื่อนชั้นนี้ขึ้น (ทับชั้นอื่น)">
+                            <i class="fa-solid fa-chevron-up text-[10px]"></i>
+                        </button>
+                        <button onclick="moveLayerDown('${id}', event)" class="text-gray-400 hover:text-emerald-600 px-1" title="เลื่อนชั้นนี้ลง (ซ่อนหลังชั้นอื่น)">
+                            <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                        </button>
+                        <button onclick="removeShapefile('${id}', event)" class="text-red-400 hover:text-red-600 px-1 border-l border-gray-200 ml-1 pl-1.5" title="ลบข้อมูลนี้">
+                            <i class="fa-solid fa-xmark text-sm"></i>
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+
+        window.toggleLayerVisibility = function(id, e) {
+            e.stopPropagation();
+            const shp = shpLayers[id];
+            if (!shp) return;
+
+            shp.visible = !(shp.visible !== false); 
+
+            if (shp.visible) {
+                if(shp.layer) map.addLayer(shp.layer);
+                applyLayerZIndex(); 
+            } else {
+                if(shp.layer) map.removeLayer(shp.layer);
+            }
+            updateShapefileListUI();
+        };
+
+        window.moveLayerUp = function(id, e) {
+            e.stopPropagation();
+            const idx = shpLayerOrder.indexOf(id);
+            if (idx > -1 && idx < shpLayerOrder.length - 1) {
+                [shpLayerOrder[idx], shpLayerOrder[idx + 1]] = [shpLayerOrder[idx + 1], shpLayerOrder[idx]];
+                applyLayerZIndex();
+                updateShapefileListUI();
+            }
+        };
+
+        window.moveLayerDown = function(id, e) {
+            e.stopPropagation();
+            const idx = shpLayerOrder.indexOf(id);
+            if (idx > 0) {
+                [shpLayerOrder[idx], shpLayerOrder[idx - 1]] = [shpLayerOrder[idx - 1], shpLayerOrder[idx]];
+                applyLayerZIndex();
+                updateShapefileListUI();
+            }
+        };
+
+        window.selectShapefile = function(id) {
+            activeShpId = id;
+            updateShapefileListUI(); 
+
+            const shp = shpLayers[id];
+            if (!shp) return;
+
+            document.getElementById('current-shp-name').textContent = `ปรับแต่ง: ${shp.name}`;
+            document.getElementById('shp-color').value = shp.color;
+            document.getElementById('shp-opacity').value = shp.opacity;
+            document.getElementById('shp-point-size').value = shp.pointSize;
+            document.getElementById('shp-point-size-val').textContent = shp.pointSize;
+
+            const catSelect = document.getElementById('shp-category-field');
+            const lblSelect = document.getElementById('shp-label-field');
+            catSelect.innerHTML = '<option value="">-- สีเดียวทั้งหมด --</option>';
+            lblSelect.innerHTML = '<option value="">-- ไม่แสดงป้ายชื่อ --</option>';
+
+            if (shp.propertiesKeys && shp.propertiesKeys.length > 0) {
+                shp.propertiesKeys.forEach(key => {
+                    catSelect.insertAdjacentHTML('beforeend', `<option value="${key}">${key}</option>`);
+                    lblSelect.insertAdjacentHTML('beforeend', `<option value="${key}">${key}</option>`);
+                });
+            }
+            
+            catSelect.value = shp.catField;
+            lblSelect.value = shp.labelField;
+
+            document.getElementById('shp-style-panel').classList.remove('hidden');
+        };
+
+        window.removeShapefile = function(id, event) {
+            event.stopPropagation();
+            if(shpLayers[id]) {
+                if(shpLayers[id].layer) map.removeLayer(shpLayers[id].layer);
+                delete shpLayers[id];
+                
+                shpLayerOrder = shpLayerOrder.filter(item => item !== id);
+                
+                if (activeShpId === id) {
+                    activeShpId = shpLayerOrder[shpLayerOrder.length - 1] || null; 
+                    if (activeShpId) {
+                        selectShapefile(activeShpId);
+                    } else {
+                        document.getElementById('shp-style-panel').classList.add('hidden');
+                    }
+                }
+                updateShapefileListUI();
+            }
+        };
+
+        document.getElementById('shp-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name;
+            
+            if (fileName.toLowerCase().endsWith('.rar')) {
+                Swal.fire({
+                    icon: 'warning', title: 'ข้อจำกัดระบบ',
+                    text: 'กรุณาบีบอัดไฟล์ Shapefile เป็นนามสกุล .zip แทน .rar ครับ',
+                    confirmButtonColor: '#10b981'
+                });
+                this.value = ''; return;
+            }
+
+            Swal.fire({ title: 'กำลังประมวลผล...', didOpen: () => { Swal.showLoading(); } });
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                shp(event.target.result).then(function(geojson) {
+                    
+                    const id = 'shp_' + Date.now();
+                    
+                    const randomColor = `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`;
+
+                    let propsKeys = [];
+                    if (geojson.type === 'FeatureCollection' && geojson.features.length > 0) {
+                        propsKeys = Object.keys(geojson.features[0].properties || {});
+                    } else if (Array.isArray(geojson) && geojson[0].type === 'FeatureCollection' && geojson[0].features.length > 0) {
+                        propsKeys = Object.keys(geojson[0].features[0].properties || {});
+                    }
+
+                    shpLayers[id] = {
+                        id: id,
+                        name: fileName,
+                        geojson: geojson,
+                        layer: null,
+                        color: randomColor,
+                        opacity: 0.5,
+                        pointSize: 6, 
+                        categoryColors: {},
+                        catField: '',
+                        labelField: '',
+                        propertiesKeys: propsKeys,
+                        visible: true 
+                    };
+                    
+                    shpLayerOrder.push(id);
+
+                    renderSingleShapefile(id);
+                    map.fitBounds(shpLayers[id].layer.getBounds());
+                    
+                    activeShpId = id;
+                    updateShapefileListUI();
+                    selectShapefile(id);
+                    
+                    Swal.fire({ icon: 'success', title: 'สำเร็จ', text: `นำเข้า ${fileName} เรียบร้อย`, timer: 1500 });
+                }).catch(function(err) {
+                    console.error("Shapefile Error:", err);
+                    Swal.fire('ข้อผิดพลาด', 'ไฟล์ไม่ถูกต้อง ตรวจสอบว่าในไฟล์ .zip มี .shp, .shx, .dbf ครบถ้วน', 'error');
+                });
+                document.getElementById('shp-upload').value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // --- 4.5 Save / Load Workspace (Project) ---
+        
+        document.getElementById('save-project-btn').addEventListener('click', () => {
+            Swal.fire({ title: 'กำลังจัดเตรียมไฟล์...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            setTimeout(() => {
+                try {
+                    // รวบรวมข้อมูลทั้งหมดที่ต้องการบันทึก
+                    const workspaceData = {
+                        version: "1.0",
+                        pointsStyle: {
+                            shape: document.getElementById('point-shape').value,
+                            color: document.getElementById('point-color').value
+                        },
+                        points: samplePoints.map(p => ({ id: p.id, lat: p.lat, lng: p.lng })),
+                        layerOrder: shpLayerOrder,
+                        layers: {}
+                    };
+
+                    // คัดลอกข้อมูล Shapefile โดยหลีกเลี่ยง Leaflet objects ที่แปลงเป็น JSON ไม่ได้
+                    for (let id in shpLayers) {
+                        const l = shpLayers[id];
+                        workspaceData.layers[id] = {
+                            id: l.id,
+                            name: l.name,
+                            geojson: l.geojson,
+                            color: l.color,
+                            opacity: l.opacity,
+                            pointSize: l.pointSize,
+                            categoryColors: l.categoryColors,
+                            catField: l.catField,
+                            labelField: l.labelField,
+                            propertiesKeys: l.propertiesKeys,
+                            visible: l.visible
+                        };
+                    }
+
+                    // แก้ไข: ใช้ Blob สำหรับสร้างไฟล์แทน Data URI ช่วยให้บันทึกบนมือถือได้เสถียรและไม่จำกัดขนาด
+                    const jsonStr = JSON.stringify(workspaceData);
+                    const blob = new Blob([jsonStr], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const link = document.createElement("a");
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", `Soil_Workspace_${new Date().getTime()}.json`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    
+                    Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', text: 'ดาวน์โหลดไฟล์ Workspace เรียบร้อยแล้ว', timer: 1500, showConfirmButton: false });
+                } catch(e) {
+                    console.error("Save Workspace Error:", e);
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถบันทึก Workspace ได้', 'error');
+                }
+            }, 100);
+        });
+
+        document.getElementById('load-project-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            Swal.fire({ title: 'กำลังโหลดโปรเจกต์...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    
+                    if (!data.version || !data.layers) {
+                        throw new Error("Invalid workspace file");
+                    }
+
+                    // ล้างแผนที่และข้อมูลเดิม
+                    clearRoute();
+                    samplePoints.forEach(pt => map.removeLayer(pt.marker));
+                    samplePoints = [];
+                    pointIdCounter = 1;
+                    
+                    Object.values(shpLayers).forEach(l => {
+                        if(l.layer) map.removeLayer(l.layer);
+                    });
+                    shpLayers = {};
+                    shpLayerOrder = [];
+
+                    // คืนค่า Style จุด
+                    if (data.pointsStyle) {
+                        document.getElementById('point-shape').value = data.pointsStyle.shape || 'circle';
+                        document.getElementById('point-color').value = data.pointsStyle.color || '#ef4444';
+                    }
+
+                    // คืนค่าจุด
+                    if (data.points && Array.isArray(data.points)) {
+                        data.points.forEach(p => {
+                            addPointToMap(p.lat, p.lng, p.id);
+                            if(p.id >= pointIdCounter) pointIdCounter = p.id + 1;
+                        });
+                    }
+
+                    // คืนค่า Shapefiles
+                    shpLayers = data.layers;
+                    shpLayerOrder = data.layerOrder || Object.keys(shpLayers);
+                    
+                    shpLayerOrder.forEach(id => {
+                        renderSingleShapefile(id);
+                    });
+
+                    // อัปเดต UI
+                    activeShpId = shpLayerOrder[shpLayerOrder.length - 1] || null;
+                    if (activeShpId) {
+                        selectShapefile(activeShpId);
+                    } else {
+                        updateShapefileListUI();
+                    }
+
+                    // ซูมไปให้ครอบคลุม
+                    let bounds = L.latLngBounds();
+                    samplePoints.forEach(p => bounds.extend([p.lat, p.lng]));
+                    shpLayerOrder.forEach(id => {
+                        if(shpLayers[id] && shpLayers[id].layer) {
+                            bounds.extend(shpLayers[id].layer.getBounds());
+                        }
+                    });
+                    
+                    if(bounds.isValid()) {
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                    }
+
+                    Swal.fire({ icon: 'success', title: 'เปิดสำเร็จ', text: 'โหลดพื้นที่ทำงานเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false });
+
+                } catch (error) {
+                    console.error("Load Workspace Error:", error);
+                    Swal.fire('ข้อผิดพลาด', 'ไฟล์ไม่ถูกต้องหรือชำรุด', 'error');
+                }
+                document.getElementById('load-project-upload').value = '';
+            };
+            reader.readAsText(file);
+        });
+
+
+        // --- 5. Place Search, Province & Current Location ---
+        
+        document.getElementById('place-search-btn').addEventListener('click', async () => {
+            const query = document.getElementById('place-search-input').value;
+            if(!query) return Swal.fire('แจ้งเตือน', 'กรุณาพิมพ์ชื่อสถานที่ที่ต้องการค้นหา', 'info');
+
+            Swal.fire({ title: 'กำลังค้นหาสถานที่...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' ประเทศไทย')}`);
+                const data = await res.json();
+
+                if(data && data.length > 0) {
+                    const lat = parseFloat(data[0].lat);
+                    const lon = parseFloat(data[0].lon);
+                    
+                    map.flyTo([lat, lon], 14, { duration: 1.5 });
+                    
+                    L.popup()
+                        .setLatLng([lat, lon])
+                        .setContent(`<b class="text-emerald-700">ผลการค้นหา:</b><br>${data[0].display_name.split(',')[0]}`)
+                        .openOn(map);
+
+                    Swal.close();
+                } else {
+                    Swal.fire('ไม่พบสถานที่', 'ลองค้นหาด้วยคำอื่น เช่น ระบุตำบลหรืออำเภอให้ชัดเจนขึ้น', 'error');
+                }
+            } catch(e) {
+                console.error(e);
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อระบบค้นหาได้', 'error');
+            }
+        });
+
+        document.getElementById('place-search-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                document.getElementById('place-search-btn').click();
+            }
+        });
+
+        // ค้นหาจากจังหวัด
+        const provinces = [
+            { name: "กรุงเทพมหานคร", lat: 13.7563, lng: 100.5018 },
+            { name: "กระบี่", lat: 8.0863, lng: 98.9063 },
+            { name: "กาญจนบุรี", lat: 14.0158, lng: 99.5328 },
+            { name: "กาฬสินธุ์", lat: 16.4322, lng: 103.5061 },
+            { name: "กำแพงเพชร", lat: 16.4828, lng: 99.5227 },
+            { name: "ขอนแก่น", lat: 16.4322, lng: 102.8236 },
+            { name: "จันทบุรี", lat: 12.6114, lng: 102.1039 },
+            { name: "ฉะเชิงเทรา", lat: 13.6904, lng: 101.0780 },
+            { name: "ชลบุรี", lat: 13.3611, lng: 100.9847 },
+            { name: "ชัยนาท", lat: 15.1852, lng: 100.1251 },
+            { name: "ชัยภูมิ", lat: 15.8068, lng: 102.0315 },
+            { name: "ชุมพร", lat: 10.4930, lng: 99.1800 },
+            { name: "เชียงราย", lat: 19.9105, lng: 99.8406 },
+            { name: "เชียงใหม่", lat: 18.7953, lng: 98.9620 },
+            { name: "ตรัง", lat: 7.5563, lng: 99.6114 },
+            { name: "ตราด", lat: 12.2428, lng: 102.5175 },
+            { name: "ตาก", lat: 16.8840, lng: 99.1258 },
+            { name: "นครนายก", lat: 14.2069, lng: 101.2131 },
+            { name: "นครปฐม", lat: 13.8199, lng: 100.0443 },
+            { name: "นครพนม", lat: 17.4048, lng: 104.7816 },
+            { name: "นครราชสีมา", lat: 14.9799, lng: 102.0978 },
+            { name: "นครศรีธรรมราช", lat: 8.4304, lng: 99.9595 },
+            { name: "นครสวรรค์", lat: 15.6848, lng: 100.1186 },
+            { name: "นนทบุรี", lat: 13.8591, lng: 100.5217 },
+            { name: "นราธิวาส", lat: 6.4255, lng: 101.8253 },
+            { name: "น่าน", lat: 18.7831, lng: 100.7801 },
+            { name: "บึงกาฬ", lat: 18.3609, lng: 103.6465 },
+            { name: "บุรีรัมย์", lat: 14.9930, lng: 103.1029 },
+            { name: "ปทุมธานี", lat: 14.0208, lng: 100.5250 },
+            { name: "ประจวบคีรีขันธ์", lat: 11.8106, lng: 99.7961 },
+            { name: "ปราจีนบุรี", lat: 14.0510, lng: 101.3734 },
+            { name: "ปัตตานี", lat: 6.8673, lng: 101.2501 },
+            { name: "พระนครศรีอยุธยา", lat: 14.3532, lng: 100.5690 },
+            { name: "พะเยา", lat: 19.1666, lng: 99.9022 },
+            { name: "พังงา", lat: 8.4303, lng: 98.5346 },
+            { name: "พัทลุง", lat: 7.6167, lng: 100.0707 },
+            { name: "พิจิตร", lat: 16.4405, lng: 100.3488 },
+            { name: "พิษณุโลก", lat: 16.8211, lng: 100.2659 },
+            { name: "เพชรบุรี", lat: 13.1118, lng: 99.9431 },
+            { name: "เพชรบูรณ์", lat: 16.4184, lng: 101.1550 },
+            { name: "แพร่", lat: 18.1446, lng: 100.1403 },
+            { name: "ภูเก็ต", lat: 7.8804, lng: 98.3922 },
+            { name: "มหาสารคาม", lat: 16.1852, lng: 103.2995 },
+            { name: "มุกดาหาร", lat: 16.5443, lng: 104.7171 },
+            { name: "แม่ฮ่องสอน", lat: 19.3020, lng: 97.9654 },
+            { name: "ยโสธร", lat: 15.7926, lng: 104.1453 },
+            { name: "ยะลา", lat: 6.5411, lng: 101.2800 },
+            { name: "ร้อยเอ็ด", lat: 16.0538, lng: 103.6520 },
+            { name: "ระนอง", lat: 9.9658, lng: 98.6348 },
+            { name: "ระยอง", lat: 12.6814, lng: 101.2816 },
+            { name: "ราชบุรี", lat: 13.5283, lng: 99.8134 },
+            { name: "ลพบุรี", lat: 14.7995, lng: 100.6534 },
+            { name: "ลำปาง", lat: 18.2888, lng: 99.4930 },
+            { name: "ลำพูน", lat: 18.5745, lng: 99.0087 },
+            { name: "เลย", lat: 17.4860, lng: 101.7223 },
+            { name: "ศรีสะเกษ", lat: 15.1186, lng: 104.3220 },
+            { name: "สกลนคร", lat: 17.1664, lng: 104.1486 },
+            { name: "สงขลา", lat: 7.1898, lng: 100.5954 },
+            { name: "สตูล", lat: 6.6238, lng: 100.0674 },
+            { name: "สมุทรปราการ", lat: 13.5991, lng: 100.5968 },
+            { name: "สมุทรสงคราม", lat: 13.4098, lng: 100.0023 },
+            { name: "สมุทรสาคร", lat: 13.5475, lng: 100.2744 },
+            { name: "สระแก้ว", lat: 13.8240, lng: 102.0646 },
+            { name: "สระบุรี", lat: 14.5289, lng: 100.9101 },
+            { name: "สิงห์บุรี", lat: 14.8936, lng: 100.3967 },
+            { name: "สุโขทัย", lat: 17.0053, lng: 99.8262 },
+            { name: "สุพรรณบุรี", lat: 14.4742, lng: 100.1123 },
+            { name: "สุราษฎร์ธานี", lat: 9.1342, lng: 99.3334 },
+            { name: "สุรินทร์", lat: 14.8818, lng: 103.4936 },
+            { name: "หนองคาย", lat: 17.8785, lng: 102.7413 },
+            { name: "หนองบัวลำภู", lat: 17.2046, lng: 102.4407 },
+            { name: "อ่างทอง", lat: 14.5896, lng: 100.4551 },
+            { name: "อำนาจเจริญ", lat: 15.8606, lng: 104.6258 },
+            { name: "อุดรธานี", lat: 17.4138, lng: 102.7872 },
+            { name: "อุตรดิตถ์", lat: 17.6201, lng: 100.0993 },
+            { name: "อุทัยธานี", lat: 15.3787, lng: 100.0250 },
+            { name: "อุบลราชธานี", lat: 15.2287, lng: 104.8564 }
+        ];
+
+        const provinceSelect = document.getElementById('province-select');
+        provinces.sort((a, b) => a.name.localeCompare(b.name, 'th')).forEach(prov => {
+            const option = document.createElement('option');
+            option.value = `${prov.lat},${prov.lng}`;
+            option.textContent = prov.name;
+            provinceSelect.appendChild(option);
+        });
+
+        provinceSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                const [lat, lng] = e.target.value.split(',');
+                map.flyTo([lat, lng], 10, { duration: 1.5 });
+            }
+        });
+
+        // ------------------------------------------
+        // ฟังก์ชันอัปเดตและติดตามตำแหน่ง (Location & Tracking)
+        // ------------------------------------------
+        
+        function drawLocationMarker(lat, lng, accuracy) {
+            if (currentLocationMarker) map.removeLayer(currentLocationMarker);
+            if (currentLocationCircle) map.removeLayer(currentLocationCircle);
+
+            const locIcon = L.divIcon({
+                className: 'current-loc-icon',
+                html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+
+            currentLocationMarker = L.marker([lat, lng], { icon: locIcon }).addTo(map);
+            currentLocationCircle = L.circle([lat, lng], { radius: accuracy, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.15, weight: 1 }).addTo(map);
+            applyLayerZIndex();
+        }
+
+        // ขอตำแหน่ง 1 ครั้ง (ปุ่มดึงตำแหน่งปัจจุบัน)
+        document.getElementById('current-location-btn').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                return Swal.fire('ไม่รองรับการทำงาน', 'เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง', 'error');
+            }
+
+            Swal.fire({ title: 'กำลังดึงตำแหน่ง...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    drawLocationMarker(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+                    Swal.close();
+                    Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'วางจุดตำแหน่งปัจจุบันบนแผนที่แล้ว', timer: 1500, showConfirmButton: false });
+                },
+                (error) => {
+                    console.error("Location Error:", error);
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลตำแหน่งปัจจุบันได้ โปรดตรวจสอบการอนุญาต', 'error');
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
+
+        // เปิด/ปิด โหมดติดตามตำแหน่ง (Real-time Tracking)
+        document.getElementById('track-location-btn').addEventListener('click', function() {
+            if (!navigator.geolocation) {
+                return Swal.fire('ไม่รองรับการทำงาน', 'เบราว์เซอร์ของคุณไม่รองรับ GPS', 'error');
+            }
+
+            const btn = this;
+
+            if (!isTracking) {
+                // เริ่ม Tracking
+                isTracking = true;
+                btn.innerHTML = `<i class="fa-solid fa-stop"></i> หยุดติดตาม`;
+                btn.className = "w-full bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-bold pulse-bg";
+                
+                Swal.fire({ title: 'กำลังค้นหาสัญญาณ GPS...', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+
+                trackingId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+                    
+                    drawLocationMarker(lat, lng, accuracy);
+                    // ให้แผนที่เลื่อนตามเบาๆ โดยไม่เปลี่ยน Zoom level
+                    map.panTo([lat, lng], { animate: true, duration: 1 });
+                },
+                (error) => {
+                    console.error("Tracking Error Code:", error.code, "Message:", error.message);
+                    let errorMsg = 'สัญญาณ GPS ขัดข้อง';
+                    if (error.code === 1) {
+                        errorMsg = 'โปรดอนุญาตการเข้าถึงตำแหน่งในเบราว์เซอร์';
+                    } else if (error.code === 2) {
+                        errorMsg = 'ไม่พบสัญญาณพิกัดตำแหน่ง (อาจอยู่ในที่อับสัญญาณ)';
+                    } else if (error.code === 3) {
+                        errorMsg = 'หมดเวลาค้นหาตำแหน่ง (Timeout)';
+                    }
+
+                    // ปิดโหมดติดตามอัตโนมัติเมื่อเกิด Error จะได้ไม่แจ้งเตือนรัวๆ
+                    if (isTracking) {
+                        isTracking = false;
+                        navigator.geolocation.clearWatch(trackingId);
+                        trackingId = null;
+                        btn.innerHTML = `<i class="fa-solid fa-person-walking"></i> โหมดติดตาม`;
+                        btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium";
+                    }
+
+                    Swal.fire({ icon: 'error', title: errorMsg, toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 });
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+
+        } else {
+            // หยุด Tracking
+            isTracking = false;
+                navigator.geolocation.clearWatch(trackingId);
+                trackingId = null;
+                
+                btn.innerHTML = `<i class="fa-solid fa-person-walking"></i> โหมดติดตาม`;
+                btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium";
+                
+                Swal.fire({ icon: 'info', title: 'ปิดโหมดติดตามแล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+            }
+        });
+
+        // เปิด-ปิด การแสดงผลปุ่มแชร์เส้นทาง
+        function enableShareRoute(path) {
+            currentPlannedRoute = path;
+            const shareBtn = document.getElementById('share-route-btn');
+            if (shareBtn) {
+                shareBtn.disabled = false;
+                shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                shareBtn.classList.add('hover:bg-indigo-600');
+            }
+        }
+
+        // ล้างเส้นทาง (Route) ถ้ามีการแก้ไขจุด
+        function clearRoute() {
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+                routeLayer = null;
+            }
+            currentPlannedRoute = null;
+            const shareBtn = document.getElementById('share-route-btn');
+            if (shareBtn) {
+                shareBtn.disabled = true;
+                shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                shareBtn.classList.remove('hover:bg-indigo-600');
+            }
+        }
+
+        // --- 6. Plotting Points (Click on Map) ---
+        function addPointToMap(lat, lng, idOverride = null) {
+            clearRoute(); // ล้างเส้นทางเก่า
+
+            const currentId = idOverride || pointIdCounter;
+            const marker = L.marker([lat, lng], { icon: getCustomIcon() }).addTo(map);
+            
+            const popupContent = `<b>จุดที่ ${currentId}</b><br>Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}`;
+            marker.bindPopup(popupContent);
+
+            // แสดง Label ถาวรข้างๆ จุดบนแผนที่
+            marker.bindTooltip(`จุดที่ ${currentId}`, {
+                permanent: true,
+                direction: 'right',
+                className: 'point-label-tooltip',
+                offset: [10, 0]
+            });
+            
+            samplePoints.push({ id: currentId, marker: marker, lat: lat, lng: lng });
+            
+            if(!idOverride) pointIdCounter++;
+            updatePointsList();
+            applyLayerZIndex(); // จัดลำดับ
+        }
+
+        map.on('click', function(e) {
+            addPointToMap(e.latlng.lat, e.latlng.lng);
+        });
+
+        function updatePointsList() {
+            const listEl = document.getElementById('points-list');
+            const countEl = document.getElementById('point-count');
+            const countNumEl = document.getElementById('point-count-num');
+            
+            listEl.innerHTML = '';
+            countEl.textContent = `${samplePoints.length} จุด`;
+            countNumEl.textContent = samplePoints.length;
+
+            samplePoints.forEach(pt => {
+                const li = document.createElement('li');
+                li.className = "bg-white p-2 rounded shadow-sm border border-gray-100 flex justify-between items-center group text-sm";
+                
+                // ลิงก์ Google Maps นำทาง และ Street View
+                const gmapsLink = `https://www.google.com/maps/dir/?api=1&destination=${pt.lat},${pt.lng}`;
+                const streetViewLink = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${pt.lat},${pt.lng}`;
+
+                li.innerHTML = `
+                    <div class="flex flex-col cursor-pointer flex-1" onclick="focusPoint(${pt.lat}, ${pt.lng})">
+                        <span class="font-semibold text-gray-800">จุดที่ ${pt.id}</span>
+                        <span class="text-[10px] text-gray-500">${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}</span>
+                    </div>
+                    <div class="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                        <a href="${streetViewLink}" target="_blank" class="text-orange-500 hover:text-orange-700 p-1.5 bg-orange-50 rounded" title="ดู Street View" onclick="event.stopPropagation();">
+                            <i class="fa-solid fa-street-view"></i>
+                        </a>
+                        <a href="${gmapsLink}" target="_blank" class="text-blue-500 hover:text-blue-700 p-1.5 bg-blue-50 rounded" title="นำทางด้วย Google Maps" onclick="event.stopPropagation();">
+                            <i class="fa-solid fa-directions"></i>
+                        </a>
+                        <button onclick="event.stopPropagation(); removePoint(${pt.id})" class="text-red-500 hover:text-red-700 p-1.5 bg-red-50 rounded" title="ลบจุดนี้">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+
+        window.focusPoint = function(lat, lng) { map.flyTo([lat, lng], 16); };
+        window.removePoint = function(id) {
+            Swal.fire({
+                title: `ยืนยันการลบจุดที่ ${id}?`,
+                text: "คุณต้องการลบจุดเก็บตัวอย่างนี้ใช่หรือไม่",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ลบทิ้ง',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const index = samplePoints.findIndex(p => p.id === id);
+                    if (index > -1) {
+                        clearRoute(); // ล้างเส้นทางเก่า
+                        map.removeLayer(samplePoints[index].marker);
+                        samplePoints.splice(index, 1);
+                        updatePointsList();
+                    }
+                }
+            });
+        };
+
+        // --- 7. Import / Export Data ---
+        
+        // Export Excel
+        document.getElementById('export-excel-btn').addEventListener('click', () => {
+            if(samplePoints.length === 0) return Swal.fire('แจ้งเตือน', 'ไม่มีจุดให้ Export', 'info');
+
+            const data = samplePoints.map(p => ({
+                "Point_ID": p.id,
+                "Latitude": p.lat,
+                "Longitude": p.lng,
+                "Google_Maps_Link": `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "SamplePoints");
+            
+            XLSX.writeFile(workbook, `Soil_Points_${new Date().getTime()}.xlsx`);
+        });
+
+        // Export SHP (แก้ JSZip Conflict เรียบร้อย)
+        document.getElementById('export-shp-btn').addEventListener('click', () => {
+            if(samplePoints.length === 0) return Swal.fire('แจ้งเตือน', 'ไม่มีจุดให้ Export', 'info');
+
+            Swal.fire({ title: 'กำลังสร้างไฟล์ Shapefile...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            setTimeout(() => {
+                try {
+                    const geojson = {
+                        type: "FeatureCollection",
+                        features: samplePoints.map(p => ({
+                            type: "Feature",
+                            geometry: {
+                                type: "Point",
+                                coordinates: [p.lng, p.lat] 
+                            },
+                            properties: {
+                                Point_ID: p.id,
+                                Latitude: p.lat,
+                                Longitude: p.lng,
+                                Name: `Point ${p.id}`
+                            }
+                        }))
+                    };
+
+                    const options = {
+                        folder: 'Soil_Sample_Points',
+                        types: { point: 'Soil_Points', polygon: false, line: false }
+                    };
+
+                    // ---- สำคัญ: ดึง JSZip กลับมาเป็นเวอร์ชัน 2 เฉพาะตอนแพ็คไฟล์ ----
+                    const tempJSZip = window.JSZip; 
+                    if (window.__JSZip_v2) {
+                        window.JSZip = window.__JSZip_v2;
+                    }
+
+                    // shpwrite สร้างข้อความ Base64 มาให้โดยตรง
+                    const content = shpwrite.zip(geojson, options);
+
+                    // ---- คืนค่า JSZip กลับเป็นเวอร์ชันของระบบ ----
+                    window.JSZip = tempJSZip;
+
+                    const link = document.createElement('a');
+                    link.href = 'data:application/zip;base64,' + content;
+                    link.download = 'Soil_Sample_Points.zip';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'ดาวน์โหลดไฟล์ Shapefile เรียบร้อยแล้ว', timer: 2000, showConfirmButton: false });
+                } catch (error) {
+                    console.error("Export SHP Error:", error);
+                    window.JSZip = window.__JSZip_v3; // คืนค่าเซฟตี้
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถสร้างไฟล์ Shapefile ได้', 'error');
+                }
+            }, 100);
+        });
+
+        // Import Excel/CSV
+        document.getElementById('excel-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
+
+                    let importedCount = 0;
+                    json.forEach(row => {
+                        const lat = parseFloat(row.Lat || row.Latitude || row.lat);
+                        const lng = parseFloat(row.Lng || row.Longitude || row.Long || row.lng || row.lon);
+                        
+                        if(!isNaN(lat) && !isNaN(lng)) {
+                            addPointToMap(lat, lng);
+                            importedCount++;
+                        }
+                    });
+
+                    if(importedCount > 0) {
+                        Swal.fire('สำเร็จ!', `นำเข้าสำเร็จ ${importedCount} จุด`, 'success');
+                        const lastPoint = samplePoints[samplePoints.length - 1];
+                        map.flyTo([lastPoint.lat, lastPoint.lng], 12);
+                    } else {
+                        Swal.fire('ข้อผิดพลาด', 'ไม่พบคอลัมน์ Lat, Lng หรือ Latitude, Longitude ในไฟล์', 'error');
+                    }
+                } catch(error) {
+                    Swal.fire('ข้อผิดพลาด', 'อ่านไฟล์ไม่สำเร็จ', 'error');
+                }
+                document.getElementById('excel-upload').value = ''; // Reset
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // --- 8. Plan Route (Nearest Neighbor algorithm with Real Roads) ---
+        document.getElementById('plan-route-btn').addEventListener('click', async () => {
+            if (samplePoints.length === 0) {
+                return Swal.fire('แจ้งเตือน', 'กรุณาปักจุดเป้าหมายอย่างน้อย 1 จุดเพื่อวางแผนเส้นทาง', 'info');
+            }
+
+            const inputOptions = {};
+            
+            // เพิ่มตัวเลือกตำแหน่งปัจจุบันอัตโนมัติ (ถ้ามี)
+            if (currentLocationMarker) {
+                inputOptions['current'] = `📍 ตำแหน่งปัจจุบันของฉัน (ที่แสดงอยู่)`;
+            } else {
+                inputOptions['current_auto'] = '📍 ค้นหาตำแหน่งปัจจุบันอัตโนมัติ';
+            }
+            
+            samplePoints.forEach(p => {
+                inputOptions[p.id] = `จุดที่ ${p.id}`;
+            });
+
+            const { value: startIdStr } = await Swal.fire({
+                title: 'เลือกจุดเริ่มต้นเดินทาง',
+                text: 'ระบบจะคำนวณเส้นทางถนนจริงที่ใกล้ที่สุดให้ครบทุกจุด',
+                input: 'select',
+                inputOptions: inputOptions,
+                inputPlaceholder: '-- เลือกจุดที่ต้องการเริ่มต้น --',
+                showCancelButton: true,
+                confirmButtonText: 'คำนวณเส้นทาง',
+                cancelButtonText: 'ยกเลิก',
+                inputValidator: (value) => {
+                    return new Promise((resolve) => {
+                        if (value) { resolve(); }
+                        else { resolve('กรุณาเลือกจุดเริ่มต้น'); }
+                    });
+                }
+            });
+
+            if (startIdStr === 'current_auto') {
+                Swal.fire({ title: 'กำลังดึงตำแหน่งปัจจุบัน...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                
+                try {
+                    const loc = await new Promise((resolve, reject) => {
+                        if (!navigator.geolocation) {
+                            reject(new Error("Browser does not support geolocation"));
+                        } else {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                        }
+                    });
+                    
+                    const lat = loc.coords.latitude;
+                    const lng = loc.coords.longitude;
+                    const accuracy = loc.coords.accuracy;
+
+                    drawLocationMarker(lat, lng, accuracy);
+                    Swal.close();
+                    
+                    const startPoint = { id: 'current', lat: lat, lng: lng };
+                    calculateAndDrawRealRoute(startPoint, [...samplePoints]);
+                    
+                } catch (error) {
+                    console.error("Geolocation Error:", error);
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลตำแหน่งปัจจุบันได้ โปรดตรวจสอบการอนุญาต', 'error');
+                }
+            } else if (startIdStr === 'current') {
+                const latlng = currentLocationMarker.getLatLng();
+                const startPoint = { id: 'current', lat: latlng.lat, lng: latlng.lng };
+                calculateAndDrawRealRoute(startPoint, [...samplePoints]);
+            } else if (startIdStr) {
+                const id = parseInt(startIdStr);
+                const startPoint = samplePoints.find(p => p.id === id);
+                const unvisited = samplePoints.filter(p => p.id !== id);
+                calculateAndDrawRealRoute(startPoint, unvisited);
+            }
+        });
+
+        async function calculateAndDrawRealRoute(startPoint, unvisitedPoints) {
+            let path = [startPoint];
+            let currentPoint = startPoint;
+            let unvisited = [...unvisitedPoints];
+            
+            if (unvisited.length === 0) {
+                Swal.fire('ข้อมูลน้อยเกินไป', 'มีจุดหมายเพียงจุดเดียว กรุณาปักจุดเป้าหมายเพิ่มเติม', 'info');
+                return;
+            }
+
+            Swal.fire({ title: 'กำลังคำนวณเส้นทางจริง...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            try {
+                const nodes = [startPoint, ...unvisited];
+                const coordString = nodes.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+                
+                const tableRes = await fetch(`https://router.project-osrm.org/table/v1/driving/${coordString}?annotations=distance`);
+                const tableData = await tableRes.json();
+                
+                if(tableData.code !== 'Ok') throw new Error("OSRM Table API Error");
+
+                let currentIndexInNodes = 0;
+                let remainingIndices = unvisited.map((_, i) => i + 1); 
+
+                while(remainingIndices.length > 0) {
+                    let minDistance = Infinity;
+                    let nearestIdxInNodes = -1;
+
+                    for(let targetIdx of remainingIndices) {
+                        const dist = tableData.distances[currentIndexInNodes][targetIdx];
+                        if(dist !== null && dist < minDistance) {
+                            minDistance = dist;
+                            nearestIdxInNodes = targetIdx;
+                        }
+                    }
+
+                    if(nearestIdxInNodes === -1) break;
+
+                    path.push(nodes[nearestIdxInNodes]);
+                    currentIndexInNodes = nearestIdxInNodes;
+                    remainingIndices = remainingIndices.filter(idx => idx !== nearestIdxInNodes);
+                }
+                
+                clearRoute();
+                routeLayer = L.featureGroup().addTo(map);
+                let totalDist = 0;
+                let totalDur = 0;
+
+                for (let i = 0; i < path.length - 1; i++) {
+                    const p1 = path[i];
+                    const p2 = path[i+1];
+                    const segColor = segmentColors[i % segmentColors.length];
+                    const url = `https://router.project-osrm.org/route/v1/driving/${p1.lng.toFixed(6)},${p1.lat.toFixed(6)};${p2.lng.toFixed(6)},${p2.lat.toFixed(6)}?overview=full&geometries=geojson`;
+                    
+                    try {
+                        const res = await fetch(url);
+                        const routeData = await res.json();
+                        
+                        if(routeData.code === 'Ok') {
+                            totalDist += routeData.routes[0].distance;
+                            totalDur += routeData.routes[0].duration;
+                            
+                            L.geoJSON(routeData.routes[0].geometry, {
+                                style: { color: '#000000', weight: 8, opacity: 0.7 }
+                            }).addTo(routeLayer);
+
+                            L.geoJSON(routeData.routes[0].geometry, {
+                                style: { color: segColor, weight: 5, opacity: 1.0, dashArray: '10, 10', className: 'route-line' }
+                            }).addTo(routeLayer);
+                        } else {
+                            throw new Error("Segment failed");
+                        }
+                    } catch (err) {
+                        const dist = map.distance([p1.lat, p1.lng], [p2.lat, p2.lng]);
+                        totalDist += dist;
+                        totalDur += (dist / 1000) * 2;
+
+                        L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], {
+                            color: '#000000', weight: 8, opacity: 0.7
+                        }).addTo(routeLayer);
+
+                        L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], {
+                            color: segColor, weight: 5, dashArray: '10, 10', opacity: 1.0, className: 'route-line'
+                        }).addTo(routeLayer);
+                    }
+                }
+
+                map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+                enableShareRoute(path);
+                applyLayerZIndex();
+
+                let orderText = '';
+                for(let i=0; i<path.length; i++) {
+                    const p = path[i];
+                    const name = p.id === 'current' ? '📍 ตำแหน่งปัจจุบันของคุณ' : `จุดที่ ${p.id}`;
+                    
+                    if(i === 0) {
+                        orderText += `<div class="text-emerald-700 font-bold mb-1 text-base">🚗 จุดเริ่มต้น: ${name}</div>`;
+                    } else {
+                        const segColor = segmentColors[(i-1) % segmentColors.length];
+                        orderText += `
+                        <div class="ml-2 pl-4 py-2" style="border-left: 4px dashed ${segColor};">
+                            <span class="text-[10px] font-bold px-2 py-1 rounded border border-gray-400 shadow-sm" style="background-color: ${segColor}; color: #000; text-shadow: 0px 0px 2px #fff;">เส้นทางที่ ${i}</span>
+                        </div>
+                        <div class="text-gray-800 font-bold mb-1 text-base">
+                            🎯 ลำดับที่ ${i}: ${name}
+                        </div>`;
+                    }
+                }
+
+                const distanceKm = (totalDist / 1000).toFixed(2);
+                const durationMin = Math.round(totalDur / 60);
+
+                Swal.fire({
+                    title: 'แผนการเดินทางเสร็จสมบูรณ์',
+                    html: `
+                        <div class="mb-3 text-sm text-gray-600 bg-blue-50 p-2 rounded border border-blue-100 text-center">
+                            <b>ระยะทางขับรถรวม:</b> ${distanceKm} กม.<br/>
+                            <b>เวลาขับรถโดยประมาณ:</b> ${durationMin} นาที
+                        </div>
+                        <div class="text-left text-sm h-48 overflow-y-auto bg-gray-50 p-3 rounded border mb-3">${orderText}</div>
+                    `,
+                    icon: 'success',
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
+                    cancelButtonText: 'ปิด',
+                    confirmButtonColor: '#6366f1',
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        document.getElementById('share-route-btn').click();
+                    }
+                });
+
+            } catch (e) {
+                console.error("Routing Error:", e);
+                calculateAndDrawRouteStraightLine(startPoint, unvisited);
+            }
+        }
+
+        function calculateAndDrawRouteStraightLine(startPoint, unvisited) {
+            let path = [startPoint];
+            let currentPoint = startPoint;
+
+            while (unvisited.length > 0) {
+                let nearestPoint = null;
+                let minDistance = Infinity;
+                let nearestIndex = -1;
+
+                for (let i = 0; i < unvisited.length; i++) {
+                    const target = unvisited[i];
+                    const dist = map.distance([currentPoint.lat, currentPoint.lng], [target.lat, target.lng]);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        nearestPoint = target;
+                        nearestIndex = i;
+                    }
+                }
+                path.push(nearestPoint);
+                currentPoint = nearestPoint;
+                unvisited.splice(nearestIndex, 1);
+            }
+
+            clearRoute();
+            routeLayer = L.featureGroup().addTo(map);
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const p1 = path[i];
+                const p2 = path[i+1];
+                const segColor = segmentColors[i % segmentColors.length];
+                
+                L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], {
+                    color: '#000000', weight: 8, opacity: 0.7
+                }).addTo(routeLayer);
+
+                L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], {
+                    color: segColor, weight: 5, dashArray: '10, 10', opacity: 1.0, className: 'route-line'
+                }).addTo(routeLayer);
+            }
+
+            map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+            enableShareRoute(path);
+            applyLayerZIndex();
+
+            let orderText = '';
+            for(let i=0; i<path.length; i++) {
+                const p = path[i];
+                const name = p.id === 'current' ? '📍 ตำแหน่งปัจจุบันของคุณ' : `จุดที่ ${p.id}`;
+                
+                if(i === 0) {
+                    orderText += `<div class="text-emerald-700 font-bold mb-1 text-base">🚗 จุดเริ่มต้น: ${name}</div>`;
+                } else {
+                    const segColor = segmentColors[(i-1) % segmentColors.length];
+                    orderText += `
+                    <div class="ml-2 pl-4 py-2" style="border-left: 4px dashed ${segColor};">
+                        <span class="text-[10px] font-bold px-2 py-1 rounded border border-gray-400 shadow-sm" style="background-color: ${segColor}; color: #000; text-shadow: 0px 0px 2px #fff;">เส้นทางที่ ${i}</span>
+                    </div>
+                    <div class="text-gray-800 font-bold mb-1 text-base">
+                        🎯 ลำดับที่ ${i}: ${name}
+                    </div>`;
+                }
+            }
+
+            Swal.fire({
+                title: 'ใช้ระยะทางเส้นตรง (ออฟไลน์)',
+                text: 'ไม่สามารถดึงข้อมูลถนนจริงได้ จึงใช้ระยะทางเส้นตรงในการจัดลำดับแทน',
+                html: `<div class="text-left text-sm h-64 overflow-y-auto bg-gray-50 p-3 rounded border mt-3 mb-3">${orderText}</div>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
+                cancelButtonText: 'ปิด',
+                confirmButtonColor: '#6366f1',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('share-route-btn').click();
+                }
+            });
+        }
+
+
+        // --- 9. Clear Data ---
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            if (samplePoints.length === 0 && Object.keys(shpLayers).length === 0 && !currentLocationMarker) {
+                return Swal.fire('แจ้งเตือน', 'ไม่มีข้อมูลบนกระดานให้ล้าง', 'info');
+            }
+
+            Swal.fire({
+                title: 'ยืนยันการล้างกระดานทั้งหมด?',
+                text: "ข้อมูลจุด, เส้นทาง, ตำแหน่งปัจจุบัน และ Layer แผนที่จะถูกลบทั้งหมด",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ลบทิ้ง',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    clearRoute();
+
+                    samplePoints.forEach(pt => map.removeLayer(pt.marker));
+                    samplePoints = []; 
+                    pointIdCounter = 1; 
+                    updatePointsList();
+
+                    if (currentLocationMarker) map.removeLayer(currentLocationMarker);
+                    if (currentLocationCircle) map.removeLayer(currentLocationCircle);
+                    currentLocationMarker = null;
+                    currentLocationCircle = null;
+                    
+                    if (isTracking) {
+                        document.getElementById('track-location-btn').click(); // สั่งปิด tracking
+                    }
+                    
+                    Object.values(shpLayers).forEach(l => {
+                        if(l.layer) map.removeLayer(l.layer);
+                    });
+                    shpLayers = {};
+                    shpLayerOrder = [];
+                    activeShpId = null;
+                    updateShapefileListUI();
+                    
+                    Swal.fire('สำเร็จ', 'ล้างข้อมูลบนกระดานทั้งหมดเรียบร้อยแล้ว', 'success');
+                }
+            });
+        });
+
+        // --- 10. Share Route / Points logic ---
+        
+        document.getElementById('share-route-btn').addEventListener('click', () => {
+            if (!currentPlannedRoute || currentPlannedRoute.length === 0) return;
+
+            let msg = `📍 แผนการเดินทางเก็บตัวอย่างดิน\n(รวม ${currentPlannedRoute.length} ตำแหน่ง)\n\n`;
+            
+            currentPlannedRoute.forEach((p, index) => {
+                const lat = p.lat.toFixed(6);
+                const lng = p.lng.toFixed(6);
+                const gmapsLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+                const name = p.id === 'current' ? 'ตำแหน่งปัจจุบัน' : `จุดที่ ${p.id}`;
+                
+                if (index === 0) {
+                    msg += `🚗 [เริ่มต้น] ${name}\nพิกัด: ${lat}, ${lng}\nนำทาง: ${gmapsLink}\n\n`;
+                } else {
+                    msg += `🎯 [ลำดับที่ ${index}] ${name}\nพิกัด: ${lat}, ${lng}\nนำทาง: ${gmapsLink}\n\n`;
+                }
+            });
+            
+            msg = msg.trim();
+            const encodedMsg = encodeURIComponent(msg);
+            const lineUrl = `https://line.me/R/msg/text/?${encodedMsg}`;
+            
+            Swal.fire({
+                title: 'แชร์แผนการเดินทาง',
+                html: `
+                    <p class="text-sm mb-3 text-gray-600">ส่งลำดับเส้นทางให้เพื่อนทาง LINE หรือคัดลอกข้อความด้านล่าง</p>
+                    <a href="${lineUrl}" target="_blank" class="flex items-center justify-center w-full bg-[#00B900] hover:bg-[#009900] text-white text-sm font-bold py-2.5 px-4 rounded mb-3 transition">
+                        <i class="fa-brands fa-line text-lg mr-2"></i> ส่งเข้าแชท LINE
+                    </a>
+                    <div class="flex flex-col gap-2">
+                        <textarea id="share-route-text-area" class="w-full border border-gray-300 rounded p-2 text-xs bg-gray-50 focus:outline-none" rows="6" readonly>${msg}</textarea>
+                        <button onclick="copyShareRouteText()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded text-xs font-bold transition w-full">
+                            คัดลอกข้อความทั้งหมด
+                        </button>
+                    </div>
+                `,
+                showConfirmButton: false,
+                showCloseButton: true
+            });
+        });
+
+        window.copyShareRouteText = function() {
+            const textArea = document.getElementById('share-route-text-area');
+            textArea.select();
+            textArea.setSelectionRange(0, 99999);
+            document.execCommand("copy");
+            
+            Swal.fire({ icon: 'success', title: 'คัดลอกแผนเดินทางแล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+        }
+
+        document.getElementById('share-line-btn').addEventListener('click', () => {
+            if (samplePoints.length === 0) {
+                return Swal.fire('แจ้งเตือน', 'ไม่มีจุดให้แชร์', 'info');
+            }
+            
+            let msg = `📍 แผนเก็บตัวอย่างดิน (รวม ${samplePoints.length} จุด)\n\n`;
+            
+            const ptsString = samplePoints.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
+            const baseUrl = window.location.href.split('?')[0];
+            const shareUrl = `${baseUrl}?pts=${ptsString}`;
+            
+            msg += `เปิดดูบนกระดานแผนที่:\n${shareUrl}\n\n`;
+            
+            samplePoints.forEach(p => {
+                const lat = p.lat.toFixed(6);
+                const lng = p.lng.toFixed(6);
+                const gmapsLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+                msg += `จุดที่ ${p.id}: ${lat}, ${lng}\nนำทาง: ${gmapsLink}\n\n`;
+            });
+            
+            msg = msg.trim();
+            const encodedMsg = encodeURIComponent(msg);
+            const lineUrl = `https://line.me/R/msg/text/?${encodedMsg}`;
+            
+            Swal.fire({
+                title: 'แชร์ข้อมูลพิกัด / ลิงก์',
+                html: `
+                    <p class="text-sm mb-3 text-gray-600">ส่งพิกัดให้เพื่อนทาง LINE หรือคัดลอกลิงก์ด้านล่าง</p>
+                    <a href="${lineUrl}" target="_blank" class="flex items-center justify-center w-full bg-[#00B900] hover:bg-[#009900] text-white text-sm font-bold py-2.5 px-4 rounded mb-3 transition">
+                        <i class="fa-brands fa-line text-lg mr-2"></i> ส่งเข้าแชท LINE
+                    </a>
+                    
+                    <div class="flex flex-col gap-2 mt-3 text-left">
+                        <label class="text-xs text-emerald-700 font-semibold"><i class="fa-solid fa-link"></i> ลิงก์สำหรับเปิดดูบนกระดาน:</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="share-link-input" class="w-full border border-gray-300 rounded p-2 text-xs bg-gray-50 focus:outline-none" value="${shareUrl}" readonly>
+                            <button onclick="copyShareLink()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded text-xs font-bold transition whitespace-nowrap">
+                                คัดลอก
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-3 border-gray-200"/>
+
+                    <div class="flex flex-col gap-2 text-left">
+                        <label class="text-xs text-gray-600 font-semibold"><i class="fa-regular fa-file-lines"></i> ข้อความสรุปพิกัด:</label>
+                        <textarea id="share-text-area" class="w-full border border-gray-300 rounded p-2 text-xs bg-gray-50 focus:outline-none" rows="4" readonly>${msg}</textarea>
+                        <button onclick="copyShareText()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded text-xs font-bold transition w-full">
+                            คัดลอกข้อความทั้งหมด
+                        </button>
+                    </div>
+                `,
+                showConfirmButton: false,
+                showCloseButton: true
+            });
+        });
+        
+        window.copyShareLink = function() {
+            const input = document.getElementById('share-link-input');
+            input.select();
+            input.setSelectionRange(0, 99999);
+            document.execCommand("copy");
+            Swal.fire({ icon: 'success', title: 'คัดลอกลิงก์แล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+        }
+
+        window.copyShareText = function() {
+            const textArea = document.getElementById('share-text-area');
+            textArea.select();
+            textArea.setSelectionRange(0, 99999);
+            document.execCommand("copy");
+            Swal.fire({ icon: 'success', title: 'คัดลอกข้อความแล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+        }
+
+        // --- 11. Export Image Layout (Save รูป) ---
+        document.getElementById('export-img-btn').addEventListener('click', async function() {
+            if(samplePoints.length === 0 && Object.keys(shpLayers).length === 0) {
+                return Swal.fire('แจ้งเตือน', 'กรุณาปักจุดหรือนำเข้าขอบเขตพื้นที่ก่อนทำการบันทึกแผนที่', 'info');
+            }
+
+            Swal.fire({ title: 'กำลังจัดทำ Layout แผนที่...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            const mapWrapper = document.getElementById('map-wrapper');
+            const mapContainer = document.getElementById('map');
+
+            mapContainer.classList.remove('absolute', 'inset-0');
+            mapContainer.classList.add('flex-1', 'border-[3px]', 'border-gray-800', 'relative', 'z-10');
+            mapWrapper.classList.add('p-6', 'md:p-10', 'bg-white', 'flex', 'flex-col');
+            
+            const header = document.createElement('div');
+            header.id = 'print-header';
+            header.className = 'mb-4 border-b-2 border-gray-800 pb-3 flex justify-between items-end shrink-0 z-10';
+            header.innerHTML = `
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-900" style="font-family: 'Prompt', sans-serif;">แผนที่แสดงจุดเก็บตัวอย่างดิน</h1>
+                    <p class="text-sm text-gray-600 mt-1">วันที่จัดทำ: ${new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-lg font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded border border-emerald-200">
+                        รวม: ${samplePoints.length} จุด
+                    </p>
+                </div>
+            `;
+            mapWrapper.insertBefore(header, mapContainer);
+
+            const footer = document.createElement('div');
+            footer.id = 'print-footer';
+            footer.className = 'mt-4 pt-3 border-t-2 border-gray-800 flex justify-between items-center text-sm text-gray-800 shrink-0 z-10';
+            
+            const pointColor = document.getElementById('point-color').value;
+            const isCircle = document.getElementById('point-shape').value === 'circle';
+            
+            let footerHtml = `
+                <div class="flex items-center gap-6 font-medium flex-wrap">
+                    <div class="flex items-center gap-2">
+                        <span style="background-color: ${pointColor}; width: 14px; height: 14px; border-radius: ${isCircle ? '50%' : '0'}; border: 1px solid #000;"></span>
+                        จุดเก็บตัวอย่าง
+                    </div>`;
+
+            Object.values(shpLayers).forEach(shp => {
+                if(shp.visible !== false) {
+                    footerHtml += `
+                        <div class="flex items-center gap-2">
+                            <span style="background-color: ${shp.color}40; width: 18px; height: 18px; border: 2px solid ${shp.color};"></span>
+                            ${shp.name.length > 20 ? shp.name.substring(0, 20) + '...' : shp.name}
+                        </div>`;
+                }
+            });
+
+            footerHtml += `
+                </div>
+                <div class="text-xs text-gray-500 whitespace-nowrap ml-4">ระบบอ้างอิงพิกัด: WGS 84</div>
+            `;
+            footer.innerHTML = footerHtml;
+            mapWrapper.appendChild(footer);
+
+            map.invalidateSize();
+
+            setTimeout(async () => {
+                try {
+                    const canvas = await html2canvas(mapWrapper, { 
+                        useCORS: true, 
+                        allowTaint: false,
+                        backgroundColor: '#ffffff',
+                        scale: 2 
+                    });
+                    
+                    canvas.toBlob(function(blob) {
+                        if (blob) {
+                            const url = window.URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.download = `Soil_Map_Layout_${new Date().getTime()}.jpg`;
+                            link.href = url;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            window.URL.revokeObjectURL(url);
+                            Swal.fire({ icon: 'success', title: 'บันทึกแผนที่สำเร็จ!', showConfirmButton: false, timer: 1500 });
+                        } else {
+                            Swal.fire('ข้อผิดพลาด', 'สร้างไฟล์ภาพไม่สำเร็จ', 'error');
+                        }
+                    }, "image/jpeg", 0.95);
+
+                } catch (err) {
+                    console.error("Export error:", err);
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถบันทึกภาพได้', 'error');
+                } finally {
+                    header.remove();
+                    footer.remove();
+                    mapWrapper.classList.remove('p-6', 'md:p-10', 'bg-white', 'flex', 'flex-col');
+                    mapContainer.classList.remove('flex-1', 'border-[3px]', 'border-gray-800', 'relative', 'z-10');
+                    mapContainer.classList.add('absolute', 'inset-0');
+                    map.invalidateSize();
+                }
+            }, 1500); 
+        });
+
+        // --- 12. Load points from URL on start ---
+        function loadPointsFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const ptsParam = urlParams.get('pts');
+            
+            if (ptsParam) {
+                const ptsArray = ptsParam.split('|');
+                let imported = 0;
+                
+                ptsArray.forEach(ptStr => {
+                    const coords = ptStr.split(',');
+                    if (coords.length === 2) {
+                        const lat = parseFloat(coords[0]);
+                        const lng = parseFloat(coords[1]);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                            addPointToMap(lat, lng);
+                            imported++;
+                        }
+                    }
+                });
+                
+                if (imported > 0) {
+                    const group = new L.featureGroup(samplePoints.map(p => p.marker));
+                    map.fitBounds(group.getBounds(), { padding: [50, 50] });
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'สำเร็จ',
+                        text: `โหลดข้อมูลจากลิงก์เรียบร้อยแล้ว (${imported} จุด)`,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
+            }
+        }
+        
+        loadPointsFromURL();
+
+        // --- 13. Mobile Sidebar Toggle ---
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        
+        function toggleSidebar() {
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+            setTimeout(() => { map.invalidateSize(); }, 300);
+        }
+
+        document.getElementById('mobile-menu-btn').addEventListener('click', toggleSidebar);
+        document.getElementById('close-sidebar-btn').addEventListener('click', toggleSidebar);
+        overlay.addEventListener('click', toggleSidebar);
+
+    </script>
+</body>
+</html>
