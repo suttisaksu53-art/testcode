@@ -140,7 +140,7 @@
                 </select>
 
                 <div>
-                    <!-- ปุ่มเปิดโหมดติดตามแบบเรียลไทม์ (ปุ่มเดียว) -->
+                    <!-- เอาปุ่มดึงตำแหน่งออกตามคำขอ เหลือแค่ปุ่มเปิดโหมดติดตามตำแหน่งปัจจุบัน -->
                     <button id="track-location-btn" class="w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-xs py-2 px-1 rounded shadow-sm transition flex items-center justify-center gap-2 font-medium">
                         <i class="fa-solid fa-person-walking"></i> เปิดโหมดติดตามตำแหน่งปัจจุบัน
                     </button>
@@ -1022,18 +1022,27 @@
         // ฟังก์ชันส่วนกลางสำหรับดึงพิกัดแบบเงียบ (ซ่อนการทำงานแบบ Tracking ไว้เบื้องหลังเพื่อกันเบราว์เซอร์ค้าง)
         function getDeviceLocationSilent() {
             return new Promise((resolve, reject) => {
+                // ส่วนที่ 2: ใช้พิกัดจากโหมดติดตามทันทีถ้ามี
+                if (currentLocationMarker) {
+                    const latlng = currentLocationMarker.getLatLng();
+                    resolve({ lat: latlng.lat, lng: latlng.lng, accuracy: currentLocationCircle ? currentLocationCircle.getRadius() : 10 });
+                    return;
+                }
+
                 if (!navigator.geolocation) {
                     return reject(new Error("เบราว์เซอร์ไม่รองรับ GPS"));
                 }
                 
+                // ส่วนที่ 1: แอบใช้ฟังก์ชันในโหมดติดตาม (watchPosition) เพื่อดึง 1 ครั้งแล้วปิด
                 let isResolved = false;
-                
-                // ใช้ watchPosition เพื่อหลอกเบราว์เซอร์ให้ส่งสัญญาณออกมาแบบต่อเนื่อง (เสถียรกว่าแบบ One-shot)
                 const watchId = navigator.geolocation.watchPosition(
                     (pos) => {
                         if (!isResolved) {
                             isResolved = true;
                             navigator.geolocation.clearWatch(watchId); // ได้ปุ๊ป สั่งปิดทันที
+                            
+                            // วาดจุดลงบนแผนที่ให้ด้วยเหมือนโหมดติดตาม
+                            drawLocationMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
                             resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
                         }
                     },
@@ -1044,17 +1053,17 @@
                             reject(err);
                         }
                     },
-                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
 
-                // หากเกิน 15 วินาทีแล้วเบราว์เซอร์ยังเงียบ ให้ตัดจบเพื่อไม่ให้แอปค้าง
+                // หากเกิน 10 วินาที ให้ตัดจบ
                 setTimeout(() => {
                     if (!isResolved) {
                         isResolved = true;
                         navigator.geolocation.clearWatch(watchId);
                         reject(new Error("หมดเวลาการค้นหาพิกัด (Timeout)"));
                     }
-                }, 15000);
+                }, 10000);
             });
         }
 
@@ -1174,6 +1183,7 @@
 
                             // แปลงภาพและสั่งดาวน์โหลด
                             canvas.toBlob(function(blob) {
+                                if(!blob) { throw new Error("Blob creation failed"); }
                                 const url = URL.createObjectURL(blob);
                                 const link = document.createElement('a');
                                 link.href = url;
@@ -1465,20 +1475,6 @@
             reader.readAsArrayBuffer(file);
         });
 
-        // ฟังก์ชันช่วยจัดการ Fetch ให้มี Timeout ได้ (ป้องกันการรอ OSRM จนค้าง)
-        const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), timeoutMs);
-            try {
-                const response = await fetch(url, { ...options, signal: controller.signal });
-                clearTimeout(id);
-                return response;
-            } catch (error) {
-                clearTimeout(id);
-                throw error;
-            }
-        };
-
         // --- 8. Plan Route (Nearest Neighbor algorithm with Real Roads) ---
         document.getElementById('plan-route-btn').addEventListener('click', async () => {
             if (samplePoints.length === 0) {
@@ -1486,7 +1482,7 @@
             }
 
             const inputOptions = {
-                'current_auto': '📍 ใช้ตำแหน่งปัจจุบัน (ค้นหาอัตโนมัติ)'
+                'current_auto': '📍 ใช้ตำแหน่งปัจจุบันของฉัน'
             };
             
             samplePoints.forEach(p => {
@@ -1513,14 +1509,14 @@
             if (startIdStr === 'current_auto') {
                 Swal.fire({ title: 'กำลังดึงตำแหน่งปัจจุบัน...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
                 try {
+                    // ใช้ฟังก์ชันส่วนกลางที่แอบดึงพิกัด
                     const loc = await getDeviceLocationSilent();
-                    drawLocationMarker(loc.lat, loc.lng, loc.accuracy);
-                    
+                    Swal.close();
                     const startPoint = { id: 'current', lat: loc.lat, lng: loc.lng };
                     calculateAndDrawRealRoute(startPoint, [...samplePoints]);
                 } catch (error) {
-                    console.error("Geolocation Error:", error);
-                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงตำแหน่งปัจจุบันได้ กรุณาตรวจสอบสัญญาณและสิทธิ์', 'error');
+                    console.error("GPS Error:", error);
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงตำแหน่งปัจจุบันได้ กรุณาเปิดโหมดติดตามทิ้งไว้หรือเปิดการอนุญาต GPS', 'error');
                 }
             } else if (startIdStr) {
                 const id = parseInt(startIdStr);
@@ -1546,8 +1542,8 @@
                 const nodes = [startPoint, ...unvisited];
                 const coordString = nodes.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
                 
-                // ใช้ fetchWithTimeout ป้องกันการค้าง
-                const tableRes = await fetchWithTimeout(`https://router.project-osrm.org/table/v1/driving/${coordString}?annotations=distance`, {}, 15000);
+                // ใช้ fetch ธรรมดาแบบของเดิม (ที่เคยใช้งานได้ไม่ค้าง)
+                const tableRes = await fetch(`https://router.project-osrm.org/table/v1/driving/${coordString}?annotations=distance`);
                 const tableData = await tableRes.json();
                 
                 if(tableData.code !== 'Ok') throw new Error("OSRM Table API Error");
@@ -1586,7 +1582,7 @@
                     const url = `https://router.project-osrm.org/route/v1/driving/${p1.lng.toFixed(6)},${p1.lat.toFixed(6)};${p2.lng.toFixed(6)},${p2.lat.toFixed(6)}?overview=full&geometries=geojson`;
                     
                     try {
-                        const res = await fetchWithTimeout(url, {}, 10000);
+                        const res = await fetch(url);
                         const routeData = await res.json();
                         
                         if(routeData.code === 'Ok') {
@@ -1940,10 +1936,12 @@
             const mapWrapper = document.getElementById('map-wrapper');
             const mapContainer = document.getElementById('map');
 
+            // เตรียม Layout สำหรับการพิมพ์
             mapContainer.classList.remove('absolute', 'inset-0');
             mapContainer.classList.add('flex-1', 'border-[3px]', 'border-gray-800', 'relative', 'z-10');
             mapWrapper.classList.add('p-6', 'md:p-10', 'bg-white', 'flex', 'flex-col');
             
+            // ส่วนหัว (Header)
             const header = document.createElement('div');
             header.id = 'print-header';
             header.className = 'mb-4 border-b-2 border-gray-800 pb-3 flex justify-between items-end shrink-0 z-10';
@@ -1960,6 +1958,7 @@
             `;
             mapWrapper.insertBefore(header, mapContainer);
 
+            // ส่วนคำอธิบายสัญลักษณ์ (Footer / Legend)
             const footer = document.createElement('div');
             footer.id = 'print-footer';
             footer.className = 'mt-4 pt-3 border-t-2 border-gray-800 flex justify-between items-center text-sm text-gray-800 shrink-0 z-10';
@@ -1974,14 +1973,13 @@
                         จุดเก็บตัวอย่าง
                     </div>`;
 
+            // เพิ่ม Legend สำหรับทุก Shapefile ที่ใช้งานอยู่
             Object.values(shpLayers).forEach(shp => {
-                if(shp.visible !== false) {
-                    footerHtml += `
-                        <div class="flex items-center gap-2">
-                            <span style="background-color: ${shp.color}40; width: 18px; height: 18px; border: 2px solid ${shp.color};"></span>
-                            ${shp.name.length > 20 ? shp.name.substring(0, 20) + '...' : shp.name}
-                        </div>`;
-                }
+                footerHtml += `
+                    <div class="flex items-center gap-2">
+                        <span style="background-color: ${shp.color}40; width: 18px; height: 18px; border: 2px solid ${shp.color};"></span>
+                        ${shp.name.length > 20 ? shp.name.substring(0, 20) + '...' : shp.name}
+                    </div>`;
             });
 
             footerHtml += `
@@ -1993,6 +1991,7 @@
 
             map.invalidateSize();
 
+            // รอ 1.5 วิ ให้กระเบื้องโหลด
             setTimeout(async () => {
                 try {
                     const canvas = await html2canvas(mapWrapper, { 
@@ -2012,19 +2011,14 @@
                             link.click();
                             document.body.removeChild(link);
                             window.URL.revokeObjectURL(url);
-                            Swal.close();
-                            setTimeout(() => {
-                                Swal.fire({ icon: 'success', title: 'บันทึกแผนที่สำเร็จ!', showConfirmButton: false, timer: 1500 });
-                            }, 300);
+                            Swal.fire({ icon: 'success', title: 'บันทึกแผนที่สำเร็จ!', showConfirmButton: false, timer: 1500 });
                         } else {
-                            Swal.close();
                             Swal.fire('ข้อผิดพลาด', 'สร้างไฟล์ภาพไม่สำเร็จ', 'error');
                         }
                     }, "image/jpeg", 0.95);
 
                 } catch (err) {
                     console.error("Export error:", err);
-                    Swal.close();
                     Swal.fire('ข้อผิดพลาด', 'ไม่สามารถบันทึกภาพได้', 'error');
                 } finally {
                     header.remove();
@@ -2059,6 +2053,7 @@
                 });
                 
                 if (imported > 0) {
+                    // Zoom to fit all newly loaded points
                     const group = new L.featureGroup(samplePoints.map(p => p.marker));
                     map.fitBounds(group.getBounds(), { padding: [50, 50] });
                     
@@ -2073,6 +2068,7 @@
             }
         }
         
+        // Trigger URL parse logic right after initialization
         loadPointsFromURL();
 
         // --- 13. Mobile Sidebar Toggle ---
@@ -2082,6 +2078,7 @@
         function toggleSidebar() {
             sidebar.classList.toggle('-translate-x-full');
             overlay.classList.toggle('hidden');
+            // สั่งให้แผนที่ประมวลผลขนาดหน้าจอใหม่เมื่อมีการดึงเมนูเข้า-ออก
             setTimeout(() => { map.invalidateSize(); }, 300);
         }
 
