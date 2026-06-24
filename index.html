@@ -1039,7 +1039,8 @@
                     (pos) => {
                         if (!isResolved) {
                             isResolved = true;
-                            navigator.geolocation.clearWatch(watchId); // ได้ปุ๊ป สั่งปิดทันที
+                            // ต้องใช้ setTimeout หุ้ม clearWatch เพื่อป้องกันเบราว์เซอร์เอ๋อ (บั๊กในมือถือบางรุ่น)
+                            setTimeout(() => navigator.geolocation.clearWatch(watchId), 0);
                             
                             // วาดจุดลงบนแผนที่ให้ด้วยเหมือนโหมดติดตาม
                             drawLocationMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
@@ -1049,7 +1050,7 @@
                     (err) => {
                         if (!isResolved) {
                             isResolved = true;
-                            navigator.geolocation.clearWatch(watchId);
+                            setTimeout(() => navigator.geolocation.clearWatch(watchId), 0);
                             reject(err);
                         }
                     },
@@ -1196,35 +1197,28 @@
                                 // ปักหมุดตำแหน่งรูปนี้ลงแผนที่ให้เลย
                                 addPointToMap(loc.lat, loc.lng);
 
-                                // ปิดหน้าต่างโหลด และแจ้งสำเร็จ
-                                Swal.close();
-                                setTimeout(() => {
-                                    Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'บันทึกรูปภาพพร้อมพิกัด GPS แล้ว และปักหมุดจุดนี้ลงบนแผนที่', timer: 2500, showConfirmButton: false });
-                                }, 300);
+                                // เปลี่ยน Alert โหลดเป็นความสำเร็จ
+                                Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'บันทึกรูปภาพพร้อมพิกัด GPS แล้ว และปักหมุดจุดนี้ลงบนแผนที่', timer: 3000, showConfirmButton: false });
                             }, 'image/jpeg', 0.95);
 
                         } catch (err) {
                             console.error("Canvas process error:", err);
-                            Swal.close();
                             Swal.fire('ข้อผิดพลาด', 'ประมวลผลรูปภาพล้มเหลว', 'error');
                         }
                     };
                     img.onerror = function() {
-                        Swal.close();
                         Swal.fire('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์รูปภาพได้', 'error');
                     };
                     img.src = event.target.result;
                 };
                 
                 reader.onerror = function() {
-                    Swal.close();
                     Swal.fire('ข้อผิดพลาด', 'อ่านไฟล์ล้มเหลว', 'error');
                 }
                 reader.readAsDataURL(file);
 
             } catch (error) {
                 console.error("Get location error:", error);
-                Swal.close();
                 Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงพิกัด GPS ได้ โปรดตรวจสอบสัญญาณและสิทธิ์การเข้าถึงตำแหน่ง', 'error');
             }
 
@@ -1511,12 +1505,11 @@
                 try {
                     // ใช้ฟังก์ชันส่วนกลางที่แอบดึงพิกัด
                     const loc = await getDeviceLocationSilent();
-                    Swal.close();
                     const startPoint = { id: 'current', lat: loc.lat, lng: loc.lng };
                     calculateAndDrawRealRoute(startPoint, [...samplePoints]);
                 } catch (error) {
                     console.error("GPS Error:", error);
-                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงตำแหน่งปัจจุบันได้ กรุณาเปิดโหมดติดตามทิ้งไว้หรือเปิดการอนุญาต GPS', 'error');
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงตำแหน่งปัจจุบันได้ กรุณาเปิดการอนุญาต GPS', 'error');
                 }
             } else if (startIdStr) {
                 const id = parseInt(startIdStr);
@@ -1640,28 +1633,25 @@
                 const distanceKm = (totalDist / 1000).toFixed(2);
                 const durationMin = Math.round(totalDur / 60);
 
-                Swal.close();
-                setTimeout(() => {
-                    Swal.fire({
-                        title: 'แผนการเดินทางเสร็จสมบูรณ์',
-                        html: `
-                            <div class="mb-3 text-sm text-gray-600 bg-blue-50 p-2 rounded border border-blue-100 text-center">
-                                <b>ระยะทางขับรถรวม:</b> ${distanceKm} กม.<br/>
-                                <b>เวลาขับรถโดยประมาณ:</b> ${durationMin} นาที
-                            </div>
-                            <div class="text-left text-sm h-48 overflow-y-auto bg-gray-50 p-3 rounded border mb-3">${orderText}</div>
-                        `,
-                        icon: 'success',
-                        showCancelButton: true,
-                        confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
-                        cancelButtonText: 'ปิด',
-                        confirmButtonColor: '#6366f1',
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            document.getElementById('share-route-btn').click();
-                        }
-                    });
-                }, 300);
+                Swal.fire({
+                    title: 'แผนการเดินทางเสร็จสมบูรณ์',
+                    html: `
+                        <div class="mb-3 text-sm text-gray-600 bg-blue-50 p-2 rounded border border-blue-100 text-center">
+                            <b>ระยะทางขับรถรวม:</b> ${distanceKm} กม.<br/>
+                            <b>เวลาขับรถโดยประมาณ:</b> ${durationMin} นาที
+                        </div>
+                        <div class="text-left text-sm h-48 overflow-y-auto bg-gray-50 p-3 rounded border mb-3">${orderText}</div>
+                    `,
+                    icon: 'success',
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
+                    cancelButtonText: 'ปิด',
+                    confirmButtonColor: '#6366f1',
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        document.getElementById('share-route-btn').click();
+                    }
+                });
 
             } catch (e) {
                 console.error("Routing Error:", e);
@@ -1734,23 +1724,20 @@
                 }
             }
 
-            Swal.close();
-            setTimeout(() => {
-                Swal.fire({
-                    title: 'ใช้ระยะทางเส้นตรง (ออฟไลน์)',
-                    text: 'ไม่สามารถดึงข้อมูลถนนจริงได้ จึงใช้ระยะทางเส้นตรงในการจัดลำดับแทน',
-                    html: `<div class="text-left text-sm h-64 overflow-y-auto bg-gray-50 p-3 rounded border mt-3 mb-3">${orderText}</div>`,
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
-                    cancelButtonText: 'ปิด',
-                    confirmButtonColor: '#6366f1',
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        document.getElementById('share-route-btn').click();
-                    }
-                });
-            }, 300);
+            Swal.fire({
+                title: 'ใช้ระยะทางเส้นตรง (ออฟไลน์)',
+                text: 'ไม่สามารถดึงข้อมูลถนนจริงได้ จึงใช้ระยะทางเส้นตรงในการจัดลำดับแทน',
+                html: `<div class="text-left text-sm h-64 overflow-y-auto bg-gray-50 p-3 rounded border mt-3 mb-3">${orderText}</div>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
+                cancelButtonText: 'ปิด',
+                confirmButtonColor: '#6366f1',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('share-route-btn').click();
+                }
+            });
         }
 
 
@@ -1975,11 +1962,13 @@
 
             // เพิ่ม Legend สำหรับทุก Shapefile ที่ใช้งานอยู่
             Object.values(shpLayers).forEach(shp => {
-                footerHtml += `
-                    <div class="flex items-center gap-2">
-                        <span style="background-color: ${shp.color}40; width: 18px; height: 18px; border: 2px solid ${shp.color};"></span>
-                        ${shp.name.length > 20 ? shp.name.substring(0, 20) + '...' : shp.name}
-                    </div>`;
+                if(shp.visible !== false) {
+                    footerHtml += `
+                        <div class="flex items-center gap-2">
+                            <span style="background-color: ${shp.color}40; width: 18px; height: 18px; border: 2px solid ${shp.color};"></span>
+                            ${shp.name.length > 20 ? shp.name.substring(0, 20) + '...' : shp.name}
+                        </div>`;
+                }
             });
 
             footerHtml += `
