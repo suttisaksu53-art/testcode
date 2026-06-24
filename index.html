@@ -157,7 +157,6 @@
                     <b><i class="fa-solid fa-circle-info"></i> รูปแบบไฟล์ที่รองรับ:</b> นำไฟล์ <code>.shp</code>, <code>.shx</code>, <code>.dbf</code> และ <code>.prj</code> บีบอัดรวมเป็นไฟล์ <b>.zip</b> เดียว
                 </div>
                 
-                <!-- เพิ่ม */* ให้มือถือสามารถกดเลือกไฟล์ได้อิสระขึ้น -->
                 <input type="file" id="shp-upload" accept=".zip,.rar,application/zip,application/x-zip-compressed,*/*" class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 mb-2 cursor-pointer">
                 
                 <!-- รายการชั้นข้อมูลที่ถูกอัปโหลด -->
@@ -1020,7 +1019,46 @@
             applyLayerZIndex();
         }
 
-        // เปิด/ปิด โหมดติดตามตำแหน่ง (Real-time Tracking)
+        // ฟังก์ชันส่วนกลางสำหรับดึงพิกัดแบบเงียบ (ซ่อนการทำงานแบบ Tracking ไว้เบื้องหลังเพื่อกันเบราว์เซอร์ค้าง)
+        function getDeviceLocationSilent() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    return reject(new Error("เบราว์เซอร์ไม่รองรับ GPS"));
+                }
+                
+                let isResolved = false;
+                
+                // ใช้ watchPosition เพื่อหลอกเบราว์เซอร์ให้ส่งสัญญาณออกมาแบบต่อเนื่อง (เสถียรกว่าแบบ One-shot)
+                const watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        if (!isResolved) {
+                            isResolved = true;
+                            navigator.geolocation.clearWatch(watchId); // ได้ปุ๊ป สั่งปิดทันที
+                            resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+                        }
+                    },
+                    (err) => {
+                        if (!isResolved) {
+                            isResolved = true;
+                            navigator.geolocation.clearWatch(watchId);
+                            reject(err);
+                        }
+                    },
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+                );
+
+                // หากเกิน 15 วินาทีแล้วเบราว์เซอร์ยังเงียบ ให้ตัดจบเพื่อไม่ให้แอปค้าง
+                setTimeout(() => {
+                    if (!isResolved) {
+                        isResolved = true;
+                        navigator.geolocation.clearWatch(watchId);
+                        reject(new Error("หมดเวลาการค้นหาพิกัด (Timeout)"));
+                    }
+                }, 15000);
+            });
+        }
+
+        // เปิด/ปิด โหมดติดตามตำแหน่งบนแผนที่ (สำหรับให้ผู้ใช้ดูแบบ Real-time)
         document.getElementById('track-location-btn').addEventListener('click', function() {
             if (!navigator.geolocation) {
                 return Swal.fire('ไม่รองรับการทำงาน', 'เบราว์เซอร์ของคุณไม่รองรับ GPS', 'error');
@@ -1029,7 +1067,7 @@
             const btn = this;
 
             if (!isTracking) {
-                // เริ่ม Tracking
+                // เริ่ม Tracking แบบวาดลงแผนที่
                 isTracking = true;
                 btn.innerHTML = `<i class="fa-solid fa-stop"></i> หยุดติดตาม`;
                 btn.className = "w-full bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-bold pulse-bg";
@@ -1043,7 +1081,6 @@
                         const accuracy = position.coords.accuracy;
                     
                         drawLocationMarker(lat, lng, accuracy);
-                        // ให้แผนที่เลื่อนตามเบาๆ โดยไม่เปลี่ยน Zoom level
                         map.panTo([lat, lng], { animate: true, duration: 1 });
                     },
                     (error) => {
@@ -1057,13 +1094,12 @@
                             errorMsg = 'หมดเวลาค้นหาตำแหน่ง (Timeout)';
                         }
 
-                        // ปิดโหมดติดตามอัตโนมัติเมื่อเกิด Error จะได้ไม่แจ้งเตือนรัวๆ
                         if (isTracking) {
                             isTracking = false;
                             navigator.geolocation.clearWatch(trackingId);
                             trackingId = null;
                             btn.innerHTML = `<i class="fa-solid fa-person-walking"></i> เปิดโหมดติดตามตำแหน่งปัจจุบัน`;
-                            btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium";
+                            btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-xs py-2 px-1 rounded shadow-sm transition flex items-center justify-center gap-2 font-medium";
                         }
 
                         Swal.fire({ icon: 'error', title: errorMsg, toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 });
@@ -1084,77 +1120,104 @@
             }
         });
 
-        // สคริปต์ ถ่ายรูปฝังพิกัด
-        document.getElementById('camera-input').addEventListener('change', function(e) {
+        // สคริปต์ ถ่ายรูปฝังพิกัด โดยใช้ฟังก์ชันดึงพิกัดแบบเงียบๆ
+        document.getElementById('camera-input').addEventListener('change', async function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            if (!currentLocationMarker) {
-                Swal.fire('แจ้งเตือน', 'กรุณาเปิด "โหมดติดตาม" ด้านบน เพื่อรับพิกัดปัจจุบันก่อนถ่ายรูปลงในระบบครับ', 'warning');
-                this.value = ''; // รีเซ็ต input
-                return;
+            // แสดงหน้าโหลดทันที เพื่อป้องกันผู้ใช้กดซ้ำ
+            Swal.fire({ title: 'กำลังดึงพิกัดและประมวลผล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            try {
+                // 1. ดึงตำแหน่งอัตโนมัติ ไม่สนว่าจะเปิดโหมดติดตามไว้หรือไม่
+                const loc = await getDeviceLocationSilent();
+                const latStr = loc.lat.toFixed(6);
+                const lngStr = loc.lng.toFixed(6);
+                const dateStr = new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+
+                // วาดให้ดูด้วยว่าดึงพิกัดแล้ว
+                drawLocationMarker(loc.lat, loc.lng, loc.accuracy);
+
+                // 2. โหลดรูปมาฝังข้อความ
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+
+                            // วาดรูปถ่ายลงไปก่อน
+                            ctx.drawImage(img, 0, 0);
+
+                            // ตั้งค่าตัวอักษรสำหรับลายน้ำ
+                            const fontSize = Math.max(16, Math.floor(img.width / 25)); // ปรับขนาดฟอนต์ตามขนาดรูป
+                            ctx.font = `bold ${fontSize}px Prompt, sans-serif`;
+                            ctx.textBaseline = 'bottom';
+                            
+                            const padding = fontSize;
+                            const text1 = `Lat: ${latStr}, Lng: ${lngStr}`;
+                            const text2 = `เวลา: ${dateStr}`;
+
+                            // สร้างขอบดำให้ตัวหนังสือ
+                            ctx.lineWidth = Math.max(2, Math.floor(fontSize / 8));
+                            ctx.strokeStyle = 'black';
+                            ctx.strokeText(text1, padding, canvas.height - padding - fontSize * 1.2);
+                            ctx.strokeText(text2, padding, canvas.height - padding);
+
+                            // เติมสีขาวด้านในตัวหนังสือ
+                            ctx.fillStyle = 'white';
+                            ctx.fillText(text1, padding, canvas.height - padding - fontSize * 1.2);
+                            ctx.fillText(text2, padding, canvas.height - padding);
+
+                            // แปลงภาพและสั่งดาวน์โหลด
+                            canvas.toBlob(function(blob) {
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = `Soil_GPS_Photo_${new Date().getTime()}.jpg`;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                URL.revokeObjectURL(url);
+
+                                // ปักหมุดตำแหน่งรูปนี้ลงแผนที่ให้เลย
+                                addPointToMap(loc.lat, loc.lng);
+
+                                // ปิดหน้าต่างโหลด และแจ้งสำเร็จ
+                                Swal.close();
+                                setTimeout(() => {
+                                    Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'บันทึกรูปภาพพร้อมพิกัด GPS แล้ว และปักหมุดจุดนี้ลงบนแผนที่', timer: 2500, showConfirmButton: false });
+                                }, 300);
+                            }, 'image/jpeg', 0.95);
+
+                        } catch (err) {
+                            console.error("Canvas process error:", err);
+                            Swal.close();
+                            Swal.fire('ข้อผิดพลาด', 'ประมวลผลรูปภาพล้มเหลว', 'error');
+                        }
+                    };
+                    img.onerror = function() {
+                        Swal.close();
+                        Swal.fire('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์รูปภาพได้', 'error');
+                    };
+                    img.src = event.target.result;
+                };
+                
+                reader.onerror = function() {
+                    Swal.close();
+                    Swal.fire('ข้อผิดพลาด', 'อ่านไฟล์ล้มเหลว', 'error');
+                }
+                reader.readAsDataURL(file);
+
+            } catch (error) {
+                console.error("Get location error:", error);
+                Swal.close();
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงพิกัด GPS ได้ โปรดตรวจสอบสัญญาณและสิทธิ์การเข้าถึงตำแหน่ง', 'error');
             }
 
-            Swal.fire({ title: 'กำลังประมวลผลรูปภาพ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-            // ดึงพิกัดจากหมุดปัจจุบันที่มาจากโหมดติดตาม
-            const latlng = currentLocationMarker.getLatLng();
-            const latStr = latlng.lat.toFixed(6);
-            const lngStr = latlng.lng.toFixed(6);
-            const dateStr = new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
-
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const img = new Image();
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-
-                    // วาดรูปถ่ายลงไปก่อน
-                    ctx.drawImage(img, 0, 0);
-
-                    // ตั้งค่าตัวอักษรสำหรับลายน้ำ
-                    const fontSize = Math.max(16, Math.floor(img.width / 25)); // ปรับขนาดฟอนต์ตามขนาดรูป
-                    ctx.font = `bold ${fontSize}px Prompt, sans-serif`;
-                    ctx.textBaseline = 'bottom';
-                    
-                    const padding = fontSize;
-                    const text1 = `Lat: ${latStr}, Lng: ${lngStr}`;
-                    const text2 = `เวลา: ${dateStr}`;
-
-                    // สร้างขอบดำให้ตัวหนังสือ
-                    ctx.lineWidth = Math.max(2, Math.floor(fontSize / 8));
-                    ctx.strokeStyle = 'black';
-                    ctx.strokeText(text1, padding, canvas.height - padding - fontSize * 1.2);
-                    ctx.strokeText(text2, padding, canvas.height - padding);
-
-                    // เติมสีขาวด้านในตัวหนังสือ
-                    ctx.fillStyle = 'white';
-                    ctx.fillText(text1, padding, canvas.height - padding - fontSize * 1.2);
-                    ctx.fillText(text2, padding, canvas.height - padding);
-
-                    // สร้างไฟล์รูปใหม่แล้วโหลดลงเครื่อง
-                    canvas.toBlob(function(blob) {
-                        const url = URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = `Soil_GPS_Photo_${new Date().getTime()}.jpg`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        URL.revokeObjectURL(url);
-
-                        // ปักหมุดตำแหน่งรูปนี้ลงแผนที่ให้เลย
-                        addPointToMap(latlng.lat, latlng.lng);
-
-                        Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'บันทึกรูปภาพพร้อมพิกัด GPS แล้ว และได้ปักหมุดจุดนี้ลงบนแผนที่', timer: 2500, showConfirmButton: false });
-                    }, 'image/jpeg', 0.95);
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
             this.value = ''; // รีเซ็ต input สำหรับการถ่ายรูปครั้งถัดไป
         });
 
@@ -1402,18 +1465,29 @@
             reader.readAsArrayBuffer(file);
         });
 
+        // ฟังก์ชันช่วยจัดการ Fetch ให้มี Timeout ได้ (ป้องกันการรอ OSRM จนค้าง)
+        const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(url, { ...options, signal: controller.signal });
+                clearTimeout(id);
+                return response;
+            } catch (error) {
+                clearTimeout(id);
+                throw error;
+            }
+        };
+
         // --- 8. Plan Route (Nearest Neighbor algorithm with Real Roads) ---
         document.getElementById('plan-route-btn').addEventListener('click', async () => {
             if (samplePoints.length === 0) {
                 return Swal.fire('แจ้งเตือน', 'กรุณาปักจุดเป้าหมายอย่างน้อย 1 จุดเพื่อวางแผนเส้นทาง', 'info');
             }
 
-            const inputOptions = {};
-            
-            // เช็คว่ามีหมุดปัจจุบันจาก "โหมดติดตาม" หรือไม่
-            if (currentLocationMarker) {
-                inputOptions['current'] = `📍 ตำแหน่งปัจจุบันของฉัน (ที่แสดงอยู่)`;
-            }
+            const inputOptions = {
+                'current_auto': '📍 ใช้ตำแหน่งปัจจุบัน (ค้นหาอัตโนมัติ)'
+            };
             
             samplePoints.forEach(p => {
                 inputOptions[p.id] = `จุดที่ ${p.id}`;
@@ -1421,7 +1495,7 @@
 
             const { value: startIdStr } = await Swal.fire({
                 title: 'เลือกจุดเริ่มต้นเดินทาง',
-                text: 'ระบบจะคำนวณเส้นทางถนนจริงที่ใกล้ที่สุดให้ครบทุกจุด (หากต้องการเริ่มจากจุดที่คุณอยู่ กรุณาเปิดโหมดติดตามก่อน)',
+                text: 'ระบบจะคำนวณเส้นทางถนนจริงที่ใกล้ที่สุดให้ครบทุกจุด',
                 input: 'select',
                 inputOptions: inputOptions,
                 inputPlaceholder: '-- เลือกจุดที่ต้องการเริ่มต้น --',
@@ -1436,10 +1510,18 @@
                 }
             });
 
-            if (startIdStr === 'current') {
-                const latlng = currentLocationMarker.getLatLng();
-                const startPoint = { id: 'current', lat: latlng.lat, lng: latlng.lng };
-                calculateAndDrawRealRoute(startPoint, [...samplePoints]);
+            if (startIdStr === 'current_auto') {
+                Swal.fire({ title: 'กำลังดึงตำแหน่งปัจจุบัน...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                try {
+                    const loc = await getDeviceLocationSilent();
+                    drawLocationMarker(loc.lat, loc.lng, loc.accuracy);
+                    
+                    const startPoint = { id: 'current', lat: loc.lat, lng: loc.lng };
+                    calculateAndDrawRealRoute(startPoint, [...samplePoints]);
+                } catch (error) {
+                    console.error("Geolocation Error:", error);
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงตำแหน่งปัจจุบันได้ กรุณาตรวจสอบสัญญาณและสิทธิ์', 'error');
+                }
             } else if (startIdStr) {
                 const id = parseInt(startIdStr);
                 const startPoint = samplePoints.find(p => p.id === id);
@@ -1464,7 +1546,8 @@
                 const nodes = [startPoint, ...unvisited];
                 const coordString = nodes.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
                 
-                const tableRes = await fetch(`https://router.project-osrm.org/table/v1/driving/${coordString}?annotations=distance`);
+                // ใช้ fetchWithTimeout ป้องกันการค้าง
+                const tableRes = await fetchWithTimeout(`https://router.project-osrm.org/table/v1/driving/${coordString}?annotations=distance`, {}, 15000);
                 const tableData = await tableRes.json();
                 
                 if(tableData.code !== 'Ok') throw new Error("OSRM Table API Error");
@@ -1503,7 +1586,7 @@
                     const url = `https://router.project-osrm.org/route/v1/driving/${p1.lng.toFixed(6)},${p1.lat.toFixed(6)};${p2.lng.toFixed(6)},${p2.lat.toFixed(6)}?overview=full&geometries=geojson`;
                     
                     try {
-                        const res = await fetch(url);
+                        const res = await fetchWithTimeout(url, {}, 10000);
                         const routeData = await res.json();
                         
                         if(routeData.code === 'Ok') {
@@ -1561,43 +1644,48 @@
                 const distanceKm = (totalDist / 1000).toFixed(2);
                 const durationMin = Math.round(totalDur / 60);
 
-                Swal.fire({
-                    title: 'แผนการเดินทางเสร็จสมบูรณ์',
-                    html: `
-                        <div class="mb-3 text-sm text-gray-600 bg-blue-50 p-2 rounded border border-blue-100 text-center">
-                            <b>ระยะทางขับรถรวม:</b> ${distanceKm} กม.<br/>
-                            <b>เวลาขับรถโดยประมาณ:</b> ${durationMin} นาที
-                        </div>
-                        <div class="text-left text-sm h-48 overflow-y-auto bg-gray-50 p-3 rounded border mb-3">${orderText}</div>
-                    `,
-                    icon: 'success',
-                    showCancelButton: true,
-                    confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
-                    cancelButtonText: 'ปิด',
-                    confirmButtonColor: '#6366f1',
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        document.getElementById('share-route-btn').click();
-                    }
-                });
+                Swal.close();
+                setTimeout(() => {
+                    Swal.fire({
+                        title: 'แผนการเดินทางเสร็จสมบูรณ์',
+                        html: `
+                            <div class="mb-3 text-sm text-gray-600 bg-blue-50 p-2 rounded border border-blue-100 text-center">
+                                <b>ระยะทางขับรถรวม:</b> ${distanceKm} กม.<br/>
+                                <b>เวลาขับรถโดยประมาณ:</b> ${durationMin} นาที
+                            </div>
+                            <div class="text-left text-sm h-48 overflow-y-auto bg-gray-50 p-3 rounded border mb-3">${orderText}</div>
+                        `,
+                        icon: 'success',
+                        showCancelButton: true,
+                        confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
+                        cancelButtonText: 'ปิด',
+                        confirmButtonColor: '#6366f1',
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            document.getElementById('share-route-btn').click();
+                        }
+                    });
+                }, 300);
 
             } catch (e) {
                 console.error("Routing Error:", e);
-                calculateAndDrawRouteStraightLine(startPoint, unvisited);
+                // ตัดจบ หากไม่สำเร็จ ก็ให้ใช้วิธีลากเส้นตรงแทน
+                calculateAndDrawRouteStraightLine(startPoint, unvisitedPoints);
             }
         }
 
         function calculateAndDrawRouteStraightLine(startPoint, unvisited) {
             let path = [startPoint];
             let currentPoint = startPoint;
+            let unv = [...unvisited];
 
-            while (unvisited.length > 0) {
+            while (unv.length > 0) {
                 let nearestPoint = null;
                 let minDistance = Infinity;
                 let nearestIndex = -1;
 
-                for (let i = 0; i < unvisited.length; i++) {
-                    const target = unvisited[i];
+                for (let i = 0; i < unv.length; i++) {
+                    const target = unv[i];
                     const dist = map.distance([currentPoint.lat, currentPoint.lng], [target.lat, target.lng]);
                     if (dist < minDistance) {
                         minDistance = dist;
@@ -1607,7 +1695,7 @@
                 }
                 path.push(nearestPoint);
                 currentPoint = nearestPoint;
-                unvisited.splice(nearestIndex, 1);
+                unv.splice(nearestIndex, 1);
             }
 
             clearRoute();
@@ -1650,20 +1738,23 @@
                 }
             }
 
-            Swal.fire({
-                title: 'ใช้ระยะทางเส้นตรง (ออฟไลน์)',
-                text: 'ไม่สามารถดึงข้อมูลถนนจริงได้ จึงใช้ระยะทางเส้นตรงในการจัดลำดับแทน',
-                html: `<div class="text-left text-sm h-64 overflow-y-auto bg-gray-50 p-3 rounded border mt-3 mb-3">${orderText}</div>`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
-                cancelButtonText: 'ปิด',
-                confirmButtonColor: '#6366f1',
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    document.getElementById('share-route-btn').click();
-                }
-            });
+            Swal.close();
+            setTimeout(() => {
+                Swal.fire({
+                    title: 'ใช้ระยะทางเส้นตรง (ออฟไลน์)',
+                    text: 'ไม่สามารถดึงข้อมูลถนนจริงได้ จึงใช้ระยะทางเส้นตรงในการจัดลำดับแทน',
+                    html: `<div class="text-left text-sm h-64 overflow-y-auto bg-gray-50 p-3 rounded border mt-3 mb-3">${orderText}</div>`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fa-solid fa-share-nodes"></i> แชร์แผนเดินทาง',
+                    cancelButtonText: 'ปิด',
+                    confirmButtonColor: '#6366f1',
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        document.getElementById('share-route-btn').click();
+                    }
+                });
+            }, 300);
         }
 
 
@@ -1921,14 +2012,19 @@
                             link.click();
                             document.body.removeChild(link);
                             window.URL.revokeObjectURL(url);
-                            Swal.fire({ icon: 'success', title: 'บันทึกแผนที่สำเร็จ!', showConfirmButton: false, timer: 1500 });
+                            Swal.close();
+                            setTimeout(() => {
+                                Swal.fire({ icon: 'success', title: 'บันทึกแผนที่สำเร็จ!', showConfirmButton: false, timer: 1500 });
+                            }, 300);
                         } else {
+                            Swal.close();
                             Swal.fire('ข้อผิดพลาด', 'สร้างไฟล์ภาพไม่สำเร็จ', 'error');
                         }
                     }, "image/jpeg", 0.95);
 
                 } catch (err) {
                     console.error("Export error:", err);
+                    Swal.close();
                     Swal.fire('ข้อผิดพลาด', 'ไม่สามารถบันทึกภาพได้', 'error');
                 } finally {
                     header.remove();
