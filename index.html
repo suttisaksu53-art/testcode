@@ -1752,14 +1752,15 @@
         function calculateAndDrawRouteStraightLine(startPoint, unvisited) {
             let path = [startPoint];
             let currentPoint = startPoint;
+            let unv = [...unvisited];
 
-            while (unvisited.length > 0) {
+            while (unv.length > 0) {
                 let nearestPoint = null;
                 let minDistance = Infinity;
                 let nearestIndex = -1;
 
-                for (let i = 0; i < unvisited.length; i++) {
-                    const target = unvisited[i];
+                for (let i = 0; i < unv.length; i++) {
+                    const target = unv[i];
                     const dist = map.distance([currentPoint.lat, currentPoint.lng], [target.lat, target.lng]);
                     if (dist < minDistance) {
                         minDistance = dist;
@@ -1769,7 +1770,7 @@
                 }
                 path.push(nearestPoint);
                 currentPoint = nearestPoint;
-                unvisited.splice(nearestIndex, 1);
+                unv.splice(nearestIndex, 1);
             }
 
             clearRoute();
