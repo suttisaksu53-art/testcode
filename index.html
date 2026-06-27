@@ -139,10 +139,13 @@
                     <option value="">-- หรือเลือกจังหวัดทางลัด --</option>
                 </select>
 
-                <div>
-                    <!-- เอาปุ่มดึงตำแหน่งออกตามคำขอ เหลือแค่ปุ่มเปิดโหมดติดตามตำแหน่งปัจจุบัน -->
-                    <button id="track-location-btn" class="w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-xs py-2 px-1 rounded shadow-sm transition flex items-center justify-center gap-2 font-medium">
-                        <i class="fa-solid fa-person-walking"></i> เปิดโหมดติดตามตำแหน่งปัจจุบัน
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="current-location-btn" class="w-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium">
+                        <i class="fa-solid fa-location-crosshairs"></i> ดึงตำแหน่งปัจจุบัน
+                    </button>
+                    <!-- ปุ่มเปิดโหมดติดตามแบบเรียลไทม์ -->
+                    <button id="track-location-btn" class="w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-medium">
+                        <i class="fa-solid fa-person-walking"></i> โหมดติดตาม
                     </button>
                 </div>
             </div>
@@ -863,8 +866,9 @@
         });
 
 
-        // --- 5. Place Search, Province & Tracking ---
+        // --- 5. Place Search, Province & Current Location ---
         
+        // ค้นหาสถานที่ (Place Search) ใช้ Nominatim API (OpenStreetMap)
         document.getElementById('place-search-btn').addEventListener('click', async () => {
             const query = document.getElementById('place-search-input').value;
             if(!query) return Swal.fire('แจ้งเตือน', 'กรุณาพิมพ์ชื่อสถานที่ที่ต้องการค้นหา', 'info');
@@ -872,6 +876,7 @@
             Swal.fire({ title: 'กำลังค้นหาสถานที่...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
 
             try {
+                // เพิ่ม 'ประเทศไทย' ต่อท้ายเพื่อให้แม่นยำขึ้น
                 const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' ประเทศไทย')}`);
                 const data = await res.json();
 
@@ -881,6 +886,7 @@
                     
                     map.flyTo([lat, lon], 14, { duration: 1.5 });
                     
+                    // สร้าง Popup ชั่วคราวบอกตำแหน่ง
                     L.popup()
                         .setLatLng([lat, lon])
                         .setContent(`<b class="text-emerald-700">ผลการค้นหา:</b><br>${data[0].display_name.split(',')[0]}`)
@@ -896,6 +902,7 @@
             }
         });
 
+        // ใส่ Event ให้กด Enter แล้วค้นหาได้เลย
         document.getElementById('place-search-input').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 document.getElementById('place-search-btn').click();
@@ -998,209 +1005,65 @@
             }
         });
 
-        // ------------------------------------------
-        // ฟังก์ชันอัปเดตและติดตามตำแหน่ง (Location & Tracking)
-        // ------------------------------------------
-        
-        function drawLocationMarker(lat, lng, accuracy) {
-            if (currentLocationMarker) map.removeLayer(currentLocationMarker);
-            if (currentLocationCircle) map.removeLayer(currentLocationCircle);
-
-            const locIcon = L.divIcon({
-                className: 'current-loc-icon',
-                html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
-            });
-
-            currentLocationMarker = L.marker([lat, lng], { icon: locIcon }).addTo(map)
-                .bindPopup('<b class="text-blue-600">ตำแหน่งของคุณ</b>').openPopup();
-            
-            currentLocationCircle = L.circle([lat, lng], { radius: accuracy, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.15, weight: 1 }).addTo(map);
-            applyLayerZIndex();
-        }
-
-        // ฟังก์ชันส่วนกลางสำหรับดึงพิกัดแบบเงียบ (ซ่อนการทำงานแบบ Tracking ไว้เบื้องหลังเพื่อกันเบราว์เซอร์ค้าง)
-        function getDeviceLocationSilent() {
-            return new Promise((resolve, reject) => {
-                // ส่วนที่ 2: ใช้พิกัดจากโหมดติดตามทันทีถ้ามี
-                if (currentLocationMarker) {
-                    const latlng = currentLocationMarker.getLatLng();
-                    resolve({ lat: latlng.lat, lng: latlng.lng, accuracy: currentLocationCircle ? currentLocationCircle.getRadius() : 10 });
-                    return;
-                }
-
-                if (!navigator.geolocation) {
-                    return reject(new Error("เบราว์เซอร์ไม่รองรับ GPS"));
-                }
-                
-                // ส่วนที่ 1: ดึงพิกัดแบบครั้งเดียว พร้อมเปิดใช้งานจากแคช 30 วิให้เร็วขึ้น
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        drawLocationMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-                        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
-                    },
-                    (err) => reject(err),
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-                );
-            });
-        }
-
-        // เปิด/ปิด โหมดติดตามตำแหน่งบนแผนที่ (สำหรับให้ผู้ใช้ดูแบบ Real-time)
-        document.getElementById('track-location-btn').addEventListener('click', function() {
+        // ฟังก์ชันแสดงตำแหน่งปัจจุบัน
+        document.getElementById('current-location-btn').addEventListener('click', () => {
             if (!navigator.geolocation) {
-                return Swal.fire('ไม่รองรับการทำงาน', 'เบราว์เซอร์ของคุณไม่รองรับ GPS', 'error');
+                return Swal.fire('ไม่รองรับการทำงาน', 'เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง', 'error');
             }
 
-            const btn = this;
+            Swal.fire({ title: 'กำลังค้นหาตำแหน่ง...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
 
-            if (!isTracking) {
-                // เริ่ม Tracking แบบวาดลงแผนที่
-                isTracking = true;
-                btn.innerHTML = `<i class="fa-solid fa-stop"></i> หยุดติดตาม`;
-                btn.className = "w-full bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 text-[11px] py-1.5 px-1 rounded transition flex items-center justify-center gap-1 font-bold pulse-bg";
-                
-                Swal.fire({ title: 'กำลังค้นหาสัญญาณ GPS...', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
 
-                trackingId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        const accuracy = position.coords.accuracy;
+                    // ไม่ต้องลบจุดเก่า (ตามคำขอ)
+                    // if (currentLocationMarker) map.removeLayer(currentLocationMarker);
+                    // if (currentLocationCircle) map.removeLayer(currentLocationCircle);
+
+                    // สร้างไอคอนสีน้ำเงินที่โดดเด่น
+                    const locIcon = L.divIcon({
+                        className: 'current-loc-icon',
+                        html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+
+                    // วาดจุดและวงกลมรัศมีความแม่นยำ
+                    currentLocationMarker = L.marker([lat, lng], { icon: locIcon }).addTo(map)
+                        .bindPopup('<b class="text-blue-600">ตำแหน่งของคุณ</b>').openPopup();
                     
-                        drawLocationMarker(lat, lng, accuracy);
-                        map.panTo([lat, lng], { animate: true, duration: 1 });
-                    },
-                    (error) => {
-                        console.error("Tracking Error Code:", error.code, "Message:", error.message);
-                        let errorMsg = 'สัญญาณ GPS ขัดข้อง';
-                        if (error.code === 1) {
-                            errorMsg = 'โปรดอนุญาตการเข้าถึงตำแหน่งในเบราว์เซอร์';
-                        } else if (error.code === 2) {
-                            errorMsg = 'ไม่พบสัญญาณพิกัดตำแหน่ง (อาจอยู่ในที่อับสัญญาณ)';
-                        } else if (error.code === 3) {
-                            errorMsg = 'หมดเวลาค้นหาตำแหน่ง (Timeout)';
-                        }
+                    currentLocationCircle = L.circle([lat, lng], { radius: accuracy, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.15, weight: 1 }).addTo(map);
 
-                        if (isTracking) {
-                            isTracking = false;
-                            navigator.geolocation.clearWatch(trackingId);
-                            trackingId = null;
-                            btn.innerHTML = `<i class="fa-solid fa-person-walking"></i> เปิดโหมดติดตามตำแหน่งปัจจุบัน`;
-                            btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-xs py-2 px-1 rounded shadow-sm transition flex items-center justify-center gap-2 font-medium";
-                        }
-
-                        Swal.fire({ icon: 'error', title: errorMsg, toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 });
-                    },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                );
-
-            } else {
-                // หยุด Tracking
-                isTracking = false;
-                navigator.geolocation.clearWatch(trackingId);
-                trackingId = null;
-                
-                btn.innerHTML = `<i class="fa-solid fa-person-walking"></i> เปิดโหมดติดตามตำแหน่งปัจจุบัน`;
-                btn.className = "w-full bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 text-xs py-2 px-1 rounded shadow-sm transition flex items-center justify-center gap-2 font-medium";
-                
-                Swal.fire({ icon: 'info', title: 'ปิดโหมดติดตามแล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
-            }
-        });
-
-        // สคริปต์ ถ่ายรูปฝังพิกัด โดยใช้ฟังก์ชันดึงพิกัดแบบเงียบๆ
-        document.getElementById('camera-input').addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            // แสดงหน้าโหลดทันที เพื่อป้องกันผู้ใช้กดซ้ำ
-            Swal.fire({ title: 'กำลังดึงพิกัดและประมวลผล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-            try {
-                // 1. ดึงตำแหน่งอัตโนมัติ ไม่สนว่าจะเปิดโหมดติดตามไว้หรือไม่
-                const loc = await getDeviceLocationSilent();
-                const latStr = loc.lat.toFixed(6);
-                const lngStr = loc.lng.toFixed(6);
-                const dateStr = new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
-
-                // วาดให้ดูด้วยว่าดึงพิกัดแล้ว
-                drawLocationMarker(loc.lat, loc.lng, loc.accuracy);
-
-                // 2. โหลดรูปมาฝังข้อความ
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.onload = function() {
-                        try {
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-                            canvas.width = img.width;
-                            canvas.height = img.height;
-
-                            // วาดรูปถ่ายลงไปก่อน
-                            ctx.drawImage(img, 0, 0);
-
-                            // ตั้งค่าตัวอักษรสำหรับลายน้ำ
-                            const fontSize = Math.max(16, Math.floor(img.width / 25)); // ปรับขนาดฟอนต์ตามขนาดรูป
-                            ctx.font = `bold ${fontSize}px Prompt, sans-serif`;
-                            ctx.textBaseline = 'bottom';
-                            
-                            const padding = fontSize;
-                            const text1 = `Lat: ${latStr}, Lng: ${lngStr}`;
-                            const text2 = `เวลา: ${dateStr}`;
-
-                            // สร้างขอบดำให้ตัวหนังสือ
-                            ctx.lineWidth = Math.max(2, Math.floor(fontSize / 8));
-                            ctx.strokeStyle = 'black';
-                            ctx.strokeText(text1, padding, canvas.height - padding - fontSize * 1.2);
-                            ctx.strokeText(text2, padding, canvas.height - padding);
-
-                            // เติมสีขาวด้านในตัวหนังสือ
-                            ctx.fillStyle = 'white';
-                            ctx.fillText(text1, padding, canvas.height - padding - fontSize * 1.2);
-                            ctx.fillText(text2, padding, canvas.height - padding);
-
-                            // แปลงภาพและสั่งดาวน์โหลด
-                            canvas.toBlob(function(blob) {
-                                if(!blob) { throw new Error("Blob creation failed"); }
-                                const url = URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = `Soil_GPS_Photo_${new Date().getTime()}.jpg`;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                URL.revokeObjectURL(url);
-
-                                // ปักหมุดตำแหน่งรูปนี้ลงแผนที่ให้เลย
-                                addPointToMap(loc.lat, loc.lng);
-
-                                // เขียนทับ Alert ไม่ต้องใช้ Swal.close()
-                                Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'บันทึกรูปภาพพร้อมพิกัด GPS แล้ว และปักหมุดจุดนี้ลงบนแผนที่', timer: 3000, showConfirmButton: false });
-                            }, 'image/jpeg', 0.95);
-
-                        } catch (err) {
-                            console.error("Canvas process error:", err);
-                            Swal.fire('ข้อผิดพลาด', 'ประมวลผลรูปภาพล้มเหลว', 'error');
-                        }
-                    };
-                    img.onerror = function() {
-                        Swal.fire('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์รูปภาพได้', 'error');
-                    };
-                    img.src = event.target.result;
-                };
-                
-                reader.onerror = function() {
-                    Swal.fire('ข้อผิดพลาด', 'อ่านไฟล์ล้มเหลว', 'error');
-                }
-                reader.readAsDataURL(file);
-
-            } catch (error) {
-                console.error("Get location error:", error);
-                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงพิกัด GPS ได้ โปรดตรวจสอบสัญญาณและสิทธิ์การเข้าถึงตำแหน่ง', 'error');
-            }
-
-            this.value = ''; // รีเซ็ต input สำหรับการถ่ายรูปครั้งถัดไป
+                    // เลื่อนแผนที่ไปที่ตำแหน่งนั้น
+                    // map.flyTo([lat, lng], 16, { duration: 1.5 }); // ปิดการเด้งไปตำแหน่งปัจจุบัน
+                    Swal.close();
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'สำเร็จ',
+                        text: 'วางจุดตำแหน่งปัจจุบันลงบนแผนที่แล้ว',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                },
+                (error) => {
+                    console.error("Geolocation Error Code:", error.code, "Message:", error.message);
+                    let errorMsg = 'ไม่สามารถดึงข้อมูลตำแหน่งปัจจุบันได้';
+                    if (error.code === 1) {
+                        errorMsg = 'โปรดอนุญาตการเข้าถึงตำแหน่ง (Location Permission) ในเบราว์เซอร์ของคุณ หากใช้งานผ่านระบบจำลอง (Iframe) อาจต้องเปิดในหน้าต่างใหม่';
+                    } else if (error.code === 2) {
+                        errorMsg = 'ไม่พบสัญญาณพิกัดตำแหน่ง (Position Unavailable)';
+                    } else if (error.code === 3) {
+                        errorMsg = 'หมดเวลาการค้นหาตำแหน่ง (Timeout)';
+                    } else if (error.message) {
+                        errorMsg += '<br/>(' + error.message + ')';
+                    }
+                    Swal.fire('ข้อผิดพลาด', errorMsg, 'error');
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
         });
 
         // เปิด-ปิด การแสดงผลปุ่มแชร์เส้นทาง
@@ -1228,15 +1091,6 @@
                 shareBtn.classList.remove('hover:bg-indigo-600');
             }
         }
-
-        // ฟังชันก์ล้างเส้นทางสำหรับปุ่ม UI
-        document.getElementById('clear-route-only-btn').addEventListener('click', () => {
-            if (!routeLayer && !currentPlannedRoute) {
-                return Swal.fire('แจ้งเตือน', 'ไม่มีเส้นทางให้ล้าง', 'info');
-            }
-            clearRoute();
-            Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'ล้างเส้นทางเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false });
-        });
 
         // --- 6. Plotting Points (Click on Map) ---
         function addPointToMap(lat, lng, idOverride = null) {
@@ -1329,12 +1183,12 @@
             });
         };
 
-        // --- 7. Import / Export Data ---
-        
+        // --- 7. Import / Export Excel & CSV & SHP ---
         // Export Excel
         document.getElementById('export-excel-btn').addEventListener('click', () => {
             if(samplePoints.length === 0) return Swal.fire('แจ้งเตือน', 'ไม่มีจุดให้ Export', 'info');
 
+            // เตรียมข้อมูล
             const data = samplePoints.map(p => ({
                 "Point_ID": p.id,
                 "Latitude": p.lat,
@@ -1346,24 +1200,27 @@
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "SamplePoints");
             
+            // สร้างไฟล์ดาวน์โหลด
             XLSX.writeFile(workbook, `Soil_Points_${new Date().getTime()}.xlsx`);
         });
 
-        // Export SHP (แก้ JSZip Conflict เรียบร้อย)
+        // Export SHP (แก้ไขปัญหา JSZip Conflict สมบูรณ์)
         document.getElementById('export-shp-btn').addEventListener('click', () => {
             if(samplePoints.length === 0) return Swal.fire('แจ้งเตือน', 'ไม่มีจุดให้ Export', 'info');
 
             Swal.fire({ title: 'กำลังสร้างไฟล์ Shapefile...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
+            // ใช้ setTimeout เพื่อให้ UI โหลดก่อนเริ่มทำงาน
             setTimeout(() => {
                 try {
+                    // สร้าง GeoJSON จากจุดทั้งหมด
                     const geojson = {
                         type: "FeatureCollection",
                         features: samplePoints.map(p => ({
                             type: "Feature",
                             geometry: {
                                 type: "Point",
-                                coordinates: [p.lng, p.lat] 
+                                coordinates: [p.lng, p.lat] // GeoJSON ใช้ [Lng, Lat]
                             },
                             properties: {
                                 Point_ID: p.id,
@@ -1391,6 +1248,7 @@
                     // ---- คืนค่า JSZip กลับเป็นเวอร์ชันของระบบ ----
                     window.JSZip = tempJSZip;
 
+                    // สร้างการดาวน์โหลด
                     const link = document.createElement('a');
                     link.href = 'data:application/zip;base64,' + content;
                     link.download = 'Soil_Sample_Points.zip';
@@ -1407,7 +1265,7 @@
             }, 100);
         });
 
-        // Import Excel/CSV
+        // Import
         document.getElementById('excel-upload').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if(!file) return;
@@ -1423,6 +1281,7 @@
 
                     let importedCount = 0;
                     json.forEach(row => {
+                        // ดึงค่าไม่ว่าจะสะกด Lat, Latitude, Lng, Longitude, lon
                         const lat = parseFloat(row.Lat || row.Latitude || row.lat);
                         const lng = parseFloat(row.Lng || row.Longitude || row.Long || row.lng || row.lon);
                         
@@ -1434,6 +1293,7 @@
 
                     if(importedCount > 0) {
                         Swal.fire('สำเร็จ!', `นำเข้าสำเร็จ ${importedCount} จุด`, 'success');
+                        // เลื่อนแผนที่ไปที่จุดล่าสุด
                         const lastPoint = samplePoints[samplePoints.length - 1];
                         map.flyTo([lastPoint.lat, lastPoint.lng], 12);
                     } else {
@@ -1453,8 +1313,9 @@
                 return Swal.fire('แจ้งเตือน', 'กรุณาปักจุดเป้าหมายอย่างน้อย 1 จุดเพื่อวางแผนเส้นทาง', 'info');
             }
 
+            // สร้างรายการตัวเลือกสำหรับหน้าต่างแจ้งเตือน
             const inputOptions = {
-                'current_auto': '📍 ใช้ตำแหน่งปัจจุบันของฉัน'
+                'current_auto': '📍 ตำแหน่งปัจจุบันของฉัน (ค้นหาอัตโนมัติ)'
             };
             
             samplePoints.forEach(p => {
@@ -1480,17 +1341,50 @@
 
             if (startIdStr === 'current_auto') {
                 Swal.fire({ title: 'กำลังดึงตำแหน่งปัจจุบัน...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                
                 try {
-                    // ใช้ฟังก์ชันส่วนกลางที่แอบดึงพิกัด
-                    const loc = await getDeviceLocationSilent();
-                    const startPoint = { id: 'current', lat: loc.lat, lng: loc.lng };
+                    const loc = await new Promise((resolve, reject) => {
+                        if (!navigator.geolocation) {
+                            reject(new Error("Browser does not support geolocation"));
+                        } else {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                        }
+                    });
                     
-                    Swal.close(); // ปิด Alert "กำลังดึงตำแหน่งปัจจุบัน..." ก่อนคำนวณเส้นทาง
+                    const lat = loc.coords.latitude;
+                    const lng = loc.coords.longitude;
+                    const accuracy = loc.coords.accuracy;
+
+                    // วาดจุดตำแหน่งปัจจุบันให้เห็นด้วย
+                    // if (currentLocationMarker) map.removeLayer(currentLocationMarker);
+                    // if (currentLocationCircle) map.removeLayer(currentLocationCircle);
+
+                    const locIcon = L.divIcon({
+                        className: 'current-loc-icon',
+                        html: `<div style="background-color: #3b82f6; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+
+                    currentLocationMarker = L.marker([lat, lng], { icon: locIcon }).addTo(map).bindPopup('<b class="text-blue-600">ตำแหน่งของคุณ</b>');
+                    currentLocationCircle = L.circle([lat, lng], { radius: accuracy, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.15, weight: 1 }).addTo(map);
+
+                    Swal.close();
                     
+                    const startPoint = { id: 'current', lat: lat, lng: lng };
                     calculateAndDrawRealRoute(startPoint, [...samplePoints]);
+                    
                 } catch (error) {
-                    console.error("GPS Error:", error);
-                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถดึงตำแหน่งปัจจุบันได้ กรุณาเปิดการอนุญาต GPS', 'error');
+                    console.error("Geolocation Error:", error);
+                    let errorMsg = 'ไม่สามารถดึงข้อมูลตำแหน่งปัจจุบันได้ โปรดตรวจสอบการอนุญาต (Location Permission)';
+                    if (error && error.code === 1) {
+                        errorMsg = 'โปรดอนุญาตการเข้าถึงตำแหน่ง (Location Permission) ในเบราว์เซอร์ของคุณ';
+                    } else if (error && error.code === 2) {
+                        errorMsg = 'ไม่พบสัญญาณพิกัดตำแหน่ง (Position Unavailable)';
+                    } else if (error && error.code === 3) {
+                        errorMsg = 'หมดเวลาการค้นหาตำแหน่ง (Timeout)';
+                    }
+                    Swal.fire('ข้อผิดพลาด', errorMsg, 'error');
                 }
             } else if (startIdStr) {
                 const id = parseInt(startIdStr);
@@ -1505,6 +1399,7 @@
             let currentPoint = startPoint;
             let unvisited = [...unvisitedPoints];
             
+            // ถ้ารวมจุดเริ่มต้นแล้วมีแค่ 1 จุด ก็ไม่ต้องคำนวณเส้นทาง
             if (unvisited.length === 0) {
                 Swal.fire('ข้อมูลน้อยเกินไป', 'มีจุดหมายเพียงจุดเดียว กรุณาปักจุดเป้าหมายเพิ่มเติม', 'info');
                 return;
@@ -1513,17 +1408,20 @@
             Swal.fire({ title: 'กำลังคำนวณเส้นทางจริง...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
             try {
+                // ใช้ OSRM Table API เพื่อดึงตารางระยะทาง (Distance Matrix) ระหว่างทุกจุด
                 const nodes = [startPoint, ...unvisited];
+                
+                // OSRM ใช้พิกัดรูปแบบ: lng,lat
                 const coordString = nodes.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
                 
-                // ใช้ fetch ธรรมดาแบบของเดิม (ที่เคยใช้งานได้ไม่ค้าง)
                 const tableRes = await fetch(`https://router.project-osrm.org/table/v1/driving/${coordString}?annotations=distance`);
                 const tableData = await tableRes.json();
                 
                 if(tableData.code !== 'Ok') throw new Error("OSRM Table API Error");
 
-                let currentIndexInNodes = 0;
-                let remainingIndices = unvisited.map((_, i) => i + 1); 
+                // จัดลำดับด้วย Nearest Neighbor Algorithm โดยใช้ตารางระยะทางจริง
+                let currentIndexInNodes = 0; // index 0 คือ startPoint
+                let remainingIndices = unvisited.map((_, i) => i + 1); // index 1 เป็นต้นไปคือ unvisited
 
                 while(remainingIndices.length > 0) {
                     let minDistance = Infinity;
@@ -1537,17 +1435,22 @@
                         }
                     }
 
-                    if(nearestIdxInNodes === -1) break;
+                    if(nearestIdxInNodes === -1) break; // กันเหนียวหากบางจุดไปไม่ถึงกัน
 
+                    // เพิ่มจุดที่ใกล้ที่สุดลงในเส้นทาง
                     path.push(nodes[nearestIdxInNodes]);
                     currentIndexInNodes = nearestIdxInNodes;
+                    // ลบจุดนั้นออกจากคิว
                     remainingIndices = remainingIndices.filter(idx => idx !== nearestIdxInNodes);
                 }
                 
+                // 2. เรียก OSRM Route API สำหรับทุก Segment แบบเรียงลำดับ
                 clearRoute();
                 routeLayer = L.featureGroup().addTo(map);
                 let totalDist = 0;
                 let totalDur = 0;
+
+                const segmentColors = ['#FF1493', '#00FFFF', '#FFFF00', '#39FF14', '#FF9900', '#CC00FF', '#FF0000', '#00FF00', '#FFD700', '#00BFFF'];
 
                 for (let i = 0; i < path.length - 1; i++) {
                     const p1 = path[i];
@@ -1563,10 +1466,12 @@
                             totalDist += routeData.routes[0].distance;
                             totalDur += routeData.routes[0].duration;
                             
+                            // วาดเงาสีดำขอบนอก (Outline) เพื่อให้เด่นชัด
                             L.geoJSON(routeData.routes[0].geometry, {
                                 style: { color: '#000000', weight: 8, opacity: 0.7 }
                             }).addTo(routeLayer);
 
+                            // วาดเส้นสีทับด้านใน
                             L.geoJSON(routeData.routes[0].geometry, {
                                 style: { color: segColor, weight: 5, opacity: 1.0, dashArray: '10, 10', className: 'route-line' }
                             }).addTo(routeLayer);
@@ -1574,9 +1479,10 @@
                             throw new Error("Segment failed");
                         }
                     } catch (err) {
+                        // Fallback to straight line for this segment
                         const dist = map.distance([p1.lat, p1.lng], [p2.lat, p2.lng]);
                         totalDist += dist;
-                        totalDur += (dist / 1000) * 2;
+                        totalDur += (dist / 1000) * 2; // Estimate 2 mins per km
 
                         L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], {
                             color: '#000000', weight: 8, opacity: 0.7
@@ -1589,9 +1495,11 @@
                 }
 
                 map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+                
+                // เก็บข้อมูลแผนเดินทางเพื่อให้สามารถแชร์ได้
                 enableShareRoute(path);
-                applyLayerZIndex();
 
+                // 3. สรุปลำดับการเดินทางในหน้าต่าง
                 let orderText = '';
                 for(let i=0; i<path.length; i++) {
                     const p = path[i];
@@ -1614,7 +1522,6 @@
                 const distanceKm = (totalDist / 1000).toFixed(2);
                 const durationMin = Math.round(totalDur / 60);
 
-                // เปลี่ยนจากการ Close แล้วเปิด เป็นเด้ง Alert ทับไปเลยแก้ปัญหาค้าง
                 Swal.fire({
                     title: 'แผนการเดินทางเสร็จสมบูรณ์',
                     html: `
@@ -1637,23 +1544,23 @@
 
             } catch (e) {
                 console.error("Routing Error:", e);
-                // ตัดจบ หากไม่สำเร็จ ก็ให้ใช้วิธีลากเส้นตรงแทน
+                // หากดึงข้อมูลถนนไม่สำเร็จ ให้ Fallback กลับไปใช้ระยะทางเส้นตรง
                 calculateAndDrawRouteStraightLine(startPoint, unvisitedPoints);
             }
         }
 
+        // ระบบสำรอง หาก API เส้นทางถนนมีปัญหา (คำนวณแบบลากเส้นตรงผ่าน Leaflet)
         function calculateAndDrawRouteStraightLine(startPoint, unvisited) {
             let path = [startPoint];
             let currentPoint = startPoint;
-            let unv = [...unvisited];
 
-            while (unv.length > 0) {
+            while (unvisited.length > 0) {
                 let nearestPoint = null;
                 let minDistance = Infinity;
                 let nearestIndex = -1;
 
-                for (let i = 0; i < unv.length; i++) {
-                    const target = unv[i];
+                for (let i = 0; i < unvisited.length; i++) {
+                    const target = unvisited[i];
                     const dist = map.distance([currentPoint.lat, currentPoint.lng], [target.lat, target.lng]);
                     if (dist < minDistance) {
                         minDistance = dist;
@@ -1663,11 +1570,12 @@
                 }
                 path.push(nearestPoint);
                 currentPoint = nearestPoint;
-                unv.splice(nearestIndex, 1);
+                unvisited.splice(nearestIndex, 1);
             }
 
             clearRoute();
             routeLayer = L.featureGroup().addTo(map);
+            const segmentColors = ['#FF1493', '#00FFFF', '#FFFF00', '#39FF14', '#FF9900', '#CC00FF', '#FF0000', '#00FF00', '#FFD700', '#00BFFF'];
 
             for (let i = 0; i < path.length - 1; i++) {
                 const p1 = path[i];
@@ -1684,8 +1592,9 @@
             }
 
             map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+            
+            // เก็บข้อมูลแผนเดินทางเพื่อให้สามารถแชร์ได้
             enableShareRoute(path);
-            applyLayerZIndex();
 
             let orderText = '';
             for(let i=0; i<path.length; i++) {
@@ -1706,7 +1615,6 @@
                 }
             }
 
-            // แจ้งเตือนทับ Alert โหลดไปเลย ไม่ต้องรอ Close() ป้องกันปัญหาค้าง
             Swal.fire({
                 title: 'ใช้ระยะทางเส้นตรง (ออฟไลน์)',
                 text: 'ไม่สามารถดึงข้อมูลถนนจริงได้ จึงใช้ระยะทางเส้นตรงในการจัดลำดับแทน',
@@ -1726,13 +1634,13 @@
 
         // --- 9. Clear Data ---
         document.getElementById('clear-btn').addEventListener('click', () => {
-            if (samplePoints.length === 0 && Object.keys(shpLayers).length === 0 && !currentLocationMarker) {
-                return Swal.fire('แจ้งเตือน', 'ไม่มีข้อมูลบนกระดานให้ล้าง', 'info');
+            if (samplePoints.length === 0) {
+                return Swal.fire('แจ้งเตือน', 'ไม่มีจุดที่ปักไว้บนกระดาน', 'info');
             }
 
             Swal.fire({
-                title: 'ยืนยันการล้างกระดานทั้งหมด?',
-                text: "ข้อมูลจุด, เส้นทาง, ตำแหน่งปัจจุบัน และ Layer แผนที่จะถูกลบทั้งหมด",
+                title: 'ยืนยันการล้างจุดปักทั้งหมด?',
+                text: "เฉพาะจุดที่คุณปักไว้จะถูกลบ (ไม่รวมชั้นข้อมูล Shapefile)",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d33',
@@ -1741,37 +1649,28 @@
                 cancelButtonText: 'ยกเลิก'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    clearRoute();
+                    clearRoute(); // ล้างเส้นทางเก่า
 
+                    // ล้างเฉพาะจุดที่ปักเอง
                     samplePoints.forEach(pt => map.removeLayer(pt.marker));
                     samplePoints = []; 
                     pointIdCounter = 1; 
                     updatePointsList();
 
-                    if (currentLocationMarker) map.removeLayer(currentLocationMarker);
-                    if (currentLocationCircle) map.removeLayer(currentLocationCircle);
-                    currentLocationMarker = null;
-                    currentLocationCircle = null;
+                    // ลบจุดตำแหน่งปัจจุบันออกด้วย (ถ้ามี)
+                    // if (currentLocationMarker) map.removeLayer(currentLocationMarker);
+                    // if (currentLocationCircle) map.removeLayer(currentLocationCircle);
+                    // currentLocationMarker = null;
+                    // currentLocationCircle = null;
                     
-                    if (isTracking) {
-                        document.getElementById('track-location-btn').click(); // สั่งปิด tracking
-                    }
-                    
-                    Object.values(shpLayers).forEach(l => {
-                        if(l.layer) map.removeLayer(l.layer);
-                    });
-                    shpLayers = {};
-                    shpLayerOrder = [];
-                    activeShpId = null;
-                    updateShapefileListUI();
-                    
-                    Swal.fire('สำเร็จ', 'ล้างข้อมูลบนกระดานทั้งหมดเรียบร้อยแล้ว', 'success');
+                    Swal.fire('สำเร็จ', 'ล้างข้อมูลจุดที่ปักเรียบร้อยแล้ว', 'success');
                 }
             });
         });
 
         // --- 10. Share Route / Points logic ---
         
+        // แชร์แผนการเดินทาง (เรียงลำดับ)
         document.getElementById('share-route-btn').addEventListener('click', () => {
             if (!currentPlannedRoute || currentPlannedRoute.length === 0) return;
 
@@ -1819,9 +1718,12 @@
             textArea.setSelectionRange(0, 99999);
             document.execCommand("copy");
             
-            Swal.fire({ icon: 'success', title: 'คัดลอกแผนเดินทางแล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
+            Swal.fire({
+                icon: 'success', title: 'คัดลอกแผนเดินทางแล้ว', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500
+            });
         }
 
+        // แชร์จุดทั้งหมด (ไม่เรียงลำดับ)
         document.getElementById('share-line-btn').addEventListener('click', () => {
             if (samplePoints.length === 0) {
                 return Swal.fire('แจ้งเตือน', 'ไม่มีจุดให้แชร์', 'info');
@@ -1829,6 +1731,7 @@
             
             let msg = `📍 แผนเก็บตัวอย่างดิน (รวม ${samplePoints.length} จุด)\n\n`;
             
+            // สร้างลิงก์ที่มีพิกัด (pts) ต่อท้าย
             const ptsString = samplePoints.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
             const baseUrl = window.location.href.split('?')[0];
             const shareUrl = `${baseUrl}?pts=${ptsString}`;
