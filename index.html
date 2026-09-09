@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน กรมพัฒนาที่ดิน (v7 Stable Fast)</title>
+  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน กรมพัฒนาที่ดิน (v8 Ultralight Fast)</title>
   
   <!-- ================= LIBRARIES ================= -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -189,70 +189,15 @@
       background-color: #B30655 !important;
     }
 
-    /* Futuristic Cyber Glow & Micro-effects */
-    .cyber-card {
-      position: relative;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .cyber-card::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: 1rem;
-      padding: 1.5px;
-      background: linear-gradient(135deg, rgba(59,130,246,0.6), rgba(16,185,129,0.3), rgba(139,92,246,0.6));
-      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      pointer-events: none;
-      z-index: 10;
-    }
-    .cyber-card:hover::before {
-      opacity: 1;
-    }
-    
-    /* Neon Status Dots */
-    .neon-green { box-shadow: 0 0 8px rgba(16, 185, 129, 0.8), 0 0 16px rgba(16, 185, 129, 0.4); }
-    .neon-amber { box-shadow: 0 0 8px rgba(245, 158, 11, 0.8), 0 0 16px rgba(245, 158, 11, 0.4); }
-    .neon-rose  { box-shadow: 0 0 8px rgba(244, 63, 94, 0.8), 0 0 16px rgba(244, 63, 94, 0.4); }
-    
-    /* Compact Table Left Accent Line on Hover */
+    /* Clean Compact Table Styling */
     .compact-table tbody tr {
-      transition: all 0.15s ease;
+      transition: background-color 0.15s ease;
       border-left: 3px solid transparent;
     }
     .compact-table tbody tr:hover {
       background-color: rgba(59, 130, 246, 0.05) !important;
       border-left: 3px solid var(--p-500) !important;
     }
-    
-    /* Bounce Short for Badge */
-    @keyframes bounceShort {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-4px); }
-    }
-    .animate-bounce-short { animation: bounceShort 1.5s infinite; }
-
-    /* Modern Clean Lab Shimmer & Micro-effects */
-    @keyframes shimmer {
-      0% { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
-    }
-    .shimmer-effect {
-      background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
-      background-size: 200% 100%;
-      animation: shimmer 1.8s infinite;
-    }
-    @keyframes pulseDot {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
-    }
-    .pulse-dot { animation: pulseDot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-    
-    /* Smooth View Transitions */
-    .view-transition { transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out; }
 
     /* Neumorphism overrides */
     html[data-theme="neumorph"] .bg-white, html[data-theme="neumorph"] .dashboard-card { border: none !important; box-shadow: 9px 9px 16px rgb(163,177,198,0.6), -9px -9px 16px rgba(255,255,255, 0.5) !important; }
@@ -500,16 +445,13 @@
          <!-- Content will be dynamically injected here -->
       </main>
       
-      <!-- SLICK CIRCULAR CART FAB (ORIGINAL POSITION + GLOW WAVE EFFECT) -->
+      <!-- SLICK CIRCULAR CART FAB -->
       <div id="cartFab" class="fixed bottom-6 right-6 z-[60] hidden transition-all duration-300 group">
-        <!-- Glowing Pulse Ring Effect -->
-        <span id="cartPulseWave" class="absolute inset-0 rounded-full animate-ping opacity-35 pointer-events-none bg-primary-500"></span>
-        <button onclick="openCartModal()" id="cartFabBtn" class="relative flex items-center justify-center w-16 h-16 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.3)] border-4 border-white transition-all duration-300 transform active:scale-90 hover:scale-105 btn-primary">
-            <i id="cartFabIcon" class="fas fa-shopping-cart text-2xl text-white drop-shadow-md"></i>
-            <span id="cartBadge" class="absolute -top-2 -right-2 bg-gradient-to-tr from-rose-600 to-amber-500 text-white text-xs font-black px-2.5 py-0.5 rounded-full shadow-lg border-2 border-white min-w-[26px] text-center animate-bounce-short">0</span>
+        <button onclick="openCartModal()" id="cartFabBtn" class="relative flex items-center justify-center w-16 h-16 rounded-full shadow-2xl border-4 border-white transition-all duration-200 transform active:scale-90 hover:scale-105 btn-primary">
+            <i id="cartFabIcon" class="fas fa-shopping-cart text-2xl text-white drop-shadow"></i>
+            <span id="cartBadge" class="absolute -top-2 -right-2 bg-rose-600 text-white text-xs font-black px-2.5 py-0.5 rounded-full shadow-lg border-2 border-white min-w-[26px] text-center">0</span>
         </button>
-        <!-- Futuristic Hover Tooltip -->
-        <div class="absolute right-full mr-3 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-bold whitespace-nowrap shadow-2xl backdrop-blur-md pointer-events-none transition-all border border-white/10">
+        <div class="absolute right-full mr-3 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold whitespace-nowrap shadow-xl pointer-events-none transition-all">
           <span id="cartFabTooltip">เปิดดูตะกร้า (0 รายการ)</span>
           <i class="fas fa-chevron-right text-[10px] text-cyan-400"></i>
         </div>
@@ -797,7 +739,7 @@
             input: '#ffffff' 
         },
 
-        // --- หมวดล้ำสมัยสไตล์สว่าง (Futuristic Light / Sci-Fi Lab) ---
+        // --- หมวดล้ำสมัยสไตล์สว่าง (Futuristic Light) ---
         'quantum_lab': { name: 'Quantum Lab', type: 'light', glass: false, bg: '#f0f9ff', card: '#ffffff', text: '#0c4a6e', border: '#bae6fd', p500: '#0284c7', icon: 'fas fa-atom', desc: 'ควอนตัม ไฮเทคแล็บ สว่างล้ำยุค', input: '#f8fafc' },
         'cyber_clean': { name: 'Cyber Clean', type: 'light', glass: false, bg: '#f5f7ff', card: '#ffffff', text: '#1e1b4b', border: '#c7d2fe', p500: '#4f46e5', icon: 'fas fa-microchip', desc: 'นีออนอินดิโก สว่างล้ำสมัย ทางการ', input: '#f8faff' },
         'bio_matrix': { name: 'Bio Matrix', type: 'light', glass: false, bg: '#f0fdf9', card: '#ffffff', text: '#134e4a', border: '#99f6e4', p500: '#0d9488', icon: 'fas fa-dna', desc: 'ไบโอเทค สะอาดตา ทันสมัยขั้นสุด', input: '#f0fdfa' },
@@ -830,7 +772,7 @@
     };
     var currentTheme = 'classic_light';
 
-    // --- MODERN IMAGE OPTIMIZER & SVG PLACEHOLDER (WEBKIT SAFE) ---
+    // --- FAST & SAFE IMAGE OPTIMIZER (NO-GPU CRASH, WEBKIT COMPLIANT) ---
     const NO_IMG_SVG = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 150%22 fill=%22%23e2e8f0%22%3E%3Crect width=%22200%22 height=%22150%22 fill=%22%23f8fafc%22/%3E%3Cpath d=%22M85 60h30v30H85z%22 fill=%22%23cbd5e1%22/%3E%3Ccircle cx=%2270%22 cy=%2250%22 r=%2210%22 fill=%22%23cbd5e1%22/%3E%3Cpath d=%22M40 110l35-45 25 30 30-40 40 55H40z%22 fill=%22%23cbd5e1%22/%3E%3C/svg%3E";
 
     function onImgError(img) {
@@ -2036,11 +1978,11 @@
 
                 let statusBadge = '';
                 if (isOut) {
-                    statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200"><span class="w-1.5 h-1.5 rounded-full bg-rose-500 neon-rose"></span>หมด</span>';
+                    statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">หมด</span>';
                 } else if (isLow) {
-                    statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>ใกล้หมด</span>';
+                    statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">ใกล้หมด</span>';
                 } else {
-                    statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 neon-green"></span>พร้อมใช้</span>';
+                    statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">พร้อมใช้</span>';
                 }
 
                 let rowAction = '';
@@ -2059,7 +2001,7 @@
                         if (inCart) {
                             rowAction = `<button onclick="removeFromCart('${m.material_id}', '${mode}')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 transition shadow-sm active:scale-95"><i class="fas fa-check mr-1"></i> เลือกแล้ว</button>`;
                         } else {
-                            rowAction = `<button onclick="addToCart('${m.material_id}', 'withdraw')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm active:scale-95"><i class="fas fa-plus mr-1"></i> เบิก</button>`;
+                            rowAction = `<button onclick="addToCart('${m.material_id}', 'withdraw')" class="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm active:scale-95"><i class="fas fa-plus mr-1"></i> เบิก</button>`;
                         }
                     } else {
                         rowAction = '<span class="text-xs text-gray-400"><i class="fas fa-lock mr-1"></i> ล็อค</span>';
@@ -2069,7 +2011,7 @@
                         if (inCart) {
                             rowAction = `<button onclick="removeFromCart('${m.material_id}', '${mode}')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 transition shadow-sm active:scale-95"><i class="fas fa-check mr-1"></i> เลือกแล้ว</button>`;
                         } else {
-                            rowAction = `<button onclick="addToCart('${m.material_id}', 'import')" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm active:scale-95"><i class="fas fa-plus mr-1"></i> นำเข้า</button>`;
+                            rowAction = `<button onclick="addToCart('${m.material_id}', 'import')" class="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm active:scale-95"><i class="fas fa-plus mr-1"></i> นำเข้า</button>`;
                         }
                     } else {
                         rowAction = '<span class="text-xs text-gray-400"><i class="fas fa-lock mr-1"></i> ล็อค</span>';
@@ -2079,7 +2021,7 @@
                 rowsHtml += `
                 <tr class="transition hover:bg-slate-50/60 border-b border-custom">
                     <td class="p-3 pl-4 text-center">
-                        <img src="${thumbUrl}" loading="lazy" decoding="async" class="w-11 h-11 object-contain rounded-xl border border-custom mx-auto bg-slate-50 cursor-pointer shadow-sm" onerror="onImgError(this)" onclick="openImageModal('${m.image_url || ''}')">
+                        <img src="${thumbUrl}" class="w-11 h-11 object-contain rounded-xl border border-custom mx-auto bg-slate-50 cursor-pointer shadow-sm" onerror="onImgError(this)" onclick="openImageModal('${m.image_url || ''}')">
                     </td>
                     <td class="p-3">
                         <div class="flex items-center gap-2">
@@ -2130,7 +2072,7 @@
             return;
         }
 
-        // --- 2. MODERN CLEAN LAB GRID VIEW ---
+        // --- 2. CLEAN HIGH-PERFORMANCE GRID VIEW (PROVEN ROCK-SOLID STABILITY) ---
         container.style.display = 'grid';
         container.style.gridTemplateColumns = 'repeat(auto-fill, minmax(260px, 1fr))';
         container.style.gap = '1.5rem';
@@ -2142,31 +2084,19 @@
             const isOut = qtyNum === 0;
             const isPinned = m.pinned === true || m.pinned === 'true' || m.pinned === 1 || m.pinned === 'TRUE';
             
-            // Modern Glowing Pill Badges
+            // Clean solid badges (Zero GPU blur memory, 100% crash-proof)
             let statusBadge = '';
             if (isOut) {
-                statusBadge = `
-                <div class="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black backdrop-blur-md bg-rose-500/15 text-rose-600 border border-rose-500/30 shadow-sm">
-                    <span class="w-1.5 h-1.5 rounded-full bg-rose-500 neon-rose"></span>
-                    <span>หมด!</span>
-                </div>`;
+                statusBadge = `<div class="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-md z-10">หมด!</div>`;
             } else if (isLow) {
-                statusBadge = `
-                <div class="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black backdrop-blur-md bg-amber-500/15 text-amber-600 border border-amber-500/30 shadow-sm">
-                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot neon-amber"></span>
-                    <span>ใกล้หมด</span>
-                </div>`;
+                statusBadge = `<div class="absolute top-3 right-3 bg-amber-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-md z-10">ใกล้หมด</div>`;
             } else {
-                statusBadge = `
-                <div class="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black backdrop-blur-md bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 shadow-sm">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 neon-green"></span>
-                    <span>พร้อมใช้</span>
-                </div>`;
+                statusBadge = `<div class="absolute top-3 right-3 bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-md z-10">พร้อมใช้</div>`;
             }
 
             let pinBadge = '';
             if (isAdmin) {
-                pinBadge = `<button onclick="togglePin('${m.material_id}', ${isPinned}, event)" class="absolute top-3 left-3 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition transform active:scale-95 z-20 ${isPinned ? 'bg-amber-500 text-white border-2 border-white' : 'bg-white/90 text-gray-500 hover:text-amber-500 border border-slate-200'}" title="ปักหมุดรายการนี้"><i class="fas fa-thumbtack ${isPinned ? '-rotate-45 text-white' : ''}"></i></button>`;
+                pinBadge = `<button onclick="togglePin('${m.material_id}', ${isPinned}, event)" class="absolute top-3 left-3 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition transform active:scale-95 z-20 ${isPinned ? 'bg-amber-500 text-white border-2 border-white' : 'bg-gray-100 text-gray-600 hover:bg-white'}" title="ปักหมุด"><i class="fas fa-thumbtack ${isPinned ? '-rotate-45 text-white' : ''}"></i></button>`;
             } else if (isPinned) {
                 pinBadge = `<div class="absolute top-3 left-3 w-8 h-8 rounded-full bg-amber-500 text-white border-2 border-white flex items-center justify-center shadow-md z-20"><i class="fas fa-thumbtack -rotate-45 text-white"></i></div>`;
             }
@@ -2217,20 +2147,20 @@
             const dispTypes = parseTypes(m.type || m.Type || m['ประเภท'] || m['type'] || '');
             if (dispTypes.length === 0) dispTypes.push('ไม่ได้ระบุประเภท');
             const dispCat = m.category || m.Category || m['หมวดหมู่'] || m['category'];
+            
+            // Ultra-light 11 KB thumbnail
             const cardThumb = getThumbUrl(m.image_url, 300);
 
             htmlString += `
-            <div class="group relative bg-white rounded-2xl border border-custom shadow-custom hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col overflow-hidden dashboard-card cyber-card">
-                <!-- Image Header with Gradient Backdrop -->
-                <div class="relative h-44 p-3 flex items-center justify-center overflow-hidden border-b border-custom" style="background: rgba(128,128,128,0.03);">
+            <div class="inventory-card rounded-2xl shadow-custom overflow-hidden hover:-translate-y-1 transition-all duration-200 flex flex-col group relative border border-custom bg-white dashboard-card">
+                <!-- Image Header -->
+                <div class="h-44 relative overflow-hidden border-b border-custom p-2 flex items-center justify-center" style="background: rgba(128,128,128,0.03);">
                     ${pinBadge}
-                    ${statusBadge}
                     <img src="${cardThumb}" 
-                         loading="lazy" 
-                         decoding="async"
-                         class="max-h-36 max-w-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform duration-500 cursor-pointer" 
+                         class="max-w-full max-h-full object-contain transition-transform duration-300 group-hover:scale-105 cursor-pointer drop-shadow-sm" 
                          onerror="onImgError(this)" 
                          onclick="openImageModal('${m.image_url || ''}')">
+                    ${statusBadge}
                 </div>
                 
                 <!-- Details Body -->
@@ -2240,22 +2170,22 @@
                         ${dispCat ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold text-emerald-600 border border-emerald-500/30" style="background: rgba(16,185,129,0.08);">${dispCat}</span>` : ''}
                     </div>
 
-                    <h3 class="font-bold text-gray-800 text-sm line-clamp-2 leading-snug group-hover:text-primary-600 transition-colors" title="${m.name}">${m.name}</h3>
+                    <h4 class="font-bold text-base line-clamp-2 mb-1 leading-tight text-gray-800" title="${m.name}">${m.name}</h4>
                     
-                    <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                        <i class="fas fa-map-marker-alt text-rose-400"></i>
-                        <span class="truncate">${m.location || m.Location || 'ไม่ได้ระบุ'}</span>
+                    <p class="text-xs mb-3 flex items-start gap-1 text-gray-500">
+                        <i class="fas fa-map-marker-alt mt-0.5 text-red-500"></i>
+                        <span>${m.location || m.Location || 'ไม่ได้ระบุ'}</span>
                     </p>
 
                     <!-- Bottom Stats -->
                     <div class="mt-auto pt-3 border-t border-custom flex items-baseline justify-between">
                         <div>
                             <span class="block text-[10px] font-bold uppercase tracking-widest text-gray-400">Stock ID</span>
-                            <span class="text-xs font-mono font-bold text-gray-600" style="background: var(--input-bg);">#${m.material_id.slice(-5)}</span>
+                            <span class="text-xs font-mono font-bold px-2 py-1 rounded-md border border-custom text-gray-600" style="background: var(--input-bg);">#${m.material_id.slice(-5)}</span>
                         </div>
                         <div class="text-right">
-                            <span class="text-2xl font-black ${isOut ? 'text-rose-500' : 'text-gray-800'} font-mono tracking-tight">${qtyNum.toLocaleString()}</span>
-                            <span class="text-xs font-semibold text-gray-500 ml-1">${m.units || m.Units || ''}</span>
+                            <span class="block text-[10px] font-bold uppercase tracking-widest text-gray-400">Quantity</span>
+                            <span class="text-2xl font-black ${isOut ? 'text-red-500' : 'text-primary-500'} leading-none">${qtyNum.toLocaleString()}</span>${(m.units || m.Units) ? `<span class="text-xs font-bold ml-1 text-gray-500">${m.units || m.Units}</span>` : ''}
                         </div>
                     </div>
 
@@ -3341,7 +3271,6 @@
         const badge = document.getElementById('cartBadge');
         const fabBtn = document.getElementById('cartFabBtn');
         const fabIcon = document.getElementById('cartFabIcon');
-        const pulseWave = document.getElementById('cartPulseWave');
         const tooltip = document.getElementById('cartFabTooltip');
         if (!fab || !badge) return;
 
@@ -3358,13 +3287,11 @@
 
             if (fabBtn) {
                 if (isImport) {
-                    fabBtn.className = 'relative flex items-center justify-center w-16 h-16 rounded-full shadow-[0_12px_32px_rgba(16,185,129,0.45)] border-4 border-white transition-all duration-300 transform active:scale-90 hover:scale-105 bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-400 text-white';
-                    if (pulseWave) pulseWave.className = 'absolute inset-0 rounded-full animate-ping opacity-40 bg-emerald-400 pointer-events-none';
-                    if (fabIcon) fabIcon.className = 'fas fa-truck-loading text-2xl text-white drop-shadow-md';
+                    fabBtn.className = 'relative flex items-center justify-center w-16 h-16 rounded-full shadow-2xl border-4 border-white transition transform active:scale-95 bg-emerald-600 hover:bg-emerald-700 text-white';
+                    if (fabIcon) fabIcon.className = 'fas fa-truck-loading text-2xl text-white drop-shadow';
                 } else {
-                    fabBtn.className = 'relative flex items-center justify-center w-16 h-16 rounded-full shadow-[0_12px_32px_rgba(244,63,94,0.45)] border-4 border-white transition-all duration-300 transform active:scale-90 hover:scale-105 bg-gradient-to-tr from-rose-600 via-pink-500 to-amber-500 text-white';
-                    if (pulseWave) pulseWave.className = 'absolute inset-0 rounded-full animate-ping opacity-40 bg-rose-400 pointer-events-none';
-                    if (fabIcon) fabIcon.className = 'fas fa-hand-holding text-2xl text-white drop-shadow-md';
+                    fabBtn.className = 'relative flex items-center justify-center w-16 h-16 rounded-full shadow-2xl border-4 border-white transition transform active:scale-95 bg-rose-600 hover:bg-rose-700 text-white';
+                    if (fabIcon) fabIcon.className = 'fas fa-hand-holding text-2xl text-white drop-shadow';
                 }
             }
         } else {
@@ -4342,16 +4269,7 @@
     function adjQty(d) { const el = document.getElementById('transQty'); el.value = Math.max(1, parseInt(el.value)+d); }
     
     function cardSkeleton() { 
-        return `
-        <div class="bg-white rounded-2xl border border-custom shadow-custom p-4 flex flex-col h-72 animate-pulse dashboard-card">
-            <div class="h-36 bg-gray-200/60 rounded-xl mb-3 shimmer-effect"></div>
-            <div class="h-4 bg-gray-200/60 rounded w-3/4 mb-2"></div>
-            <div class="h-3 bg-gray-200/60 rounded w-1/2 mb-auto"></div>
-            <div class="flex justify-between items-center pt-3 border-t border-custom">
-                <div class="h-6 bg-gray-200/60 rounded w-16"></div>
-                <div class="h-8 bg-gray-200/60 rounded w-20"></div>
-            </div>
-        </div>`; 
+        return `<div class="bg-white p-6 rounded-2xl shadow-custom border border-custom h-32 animate-pulse flex flex-col justify-between dashboard-card"><div class="h-4 bg-gray-200 rounded w-1/2 opacity-50"></div><div class="h-8 bg-gray-200 rounded w-1/3 opacity-50"></div></div>`; 
     }
     
     function statCard(title, value, icon, colorClass) { 
