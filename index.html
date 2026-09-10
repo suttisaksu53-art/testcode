@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน กรมพัฒนาที่ดิน (v9 Mobile Optimized)</title>
+  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน กรมพัฒนาที่ดิน (v12 Animated Dashboard)</title>
   
   <!-- ================= LIBRARIES ================= -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -486,7 +486,7 @@
         </div>
 
         <div>
-          <label class="block text-sm font-bold mb-1 text-gray-700">หมวดหมู่ย่อย (Category)</label>
+          <label class="block text-sm font-bold mb-1 text-gray-700">หมวดหมู่ (Category)</label>
           <div class="flex flex-col gap-2">
               <select id="matCatSelect" onchange="handleModalCatChange()" class="w-full px-4 py-2 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition border-custom">
                 <!-- Injected via JS based on Type -->
@@ -911,14 +911,21 @@
         return "#"+RR+GG+BB;
     }
     
-    async function loadGlobalTheme() {
-        const localTheme = localStorage.getItem('global_theme');
-        if (localTheme) {
-            currentTheme = localTheme;
-            applyTheme(localTheme);
-        }
+    function loadLocalTheme() {
+        const localTheme = localStorage.getItem('global_theme') || 'ldd_soil';
+        currentTheme = localTheme;
+        applyTheme(localTheme);
+    }
+
+    async function syncGlobalTheme() {
+        // Only sync if logged in and not checked recently (within 2 hours)
+        if (!state.user) return;
+        const lastSync = parseInt(localStorage.getItem('kstore_theme_sync_time') || '0', 10);
+        if (Date.now() - lastSync < 2 * 60 * 60 * 1000) return; // 2 hours
+
         try {
             const globalTheme = await api('getGlobalTheme');
+            localStorage.setItem('kstore_theme_sync_time', Date.now().toString());
             if (globalTheme && THEMES[globalTheme] && globalTheme !== currentTheme) {
                 currentTheme = globalTheme;
                 applyTheme(globalTheme);
@@ -983,7 +990,36 @@
         filter: { search: '', sort: 'newest' } 
     };
     
-    var cache = { materials: null, bom: null, users: null, reports: null };
+    // PERSISTENT LOCAL STORAGE BACKED CACHE (Instant 0.01s load & offline resilience)
+    var cache = new Proxy({
+        materials: null,
+        bom: null,
+        users: null,
+        reports: null
+    }, {
+        get(target, prop) {
+            if (target[prop] !== null && target[prop] !== undefined) return target[prop];
+            try {
+                const val = localStorage.getItem('kstore_cache_' + String(prop));
+                if (val) {
+                    target[prop] = val;
+                    return val;
+                }
+            } catch(e) {}
+            return target[prop];
+        },
+        set(target, prop, value) {
+            target[prop] = value;
+            try {
+                if (value === null || value === undefined) {
+                    localStorage.removeItem('kstore_cache_' + String(prop));
+                } else {
+                    localStorage.setItem('kstore_cache_' + String(prop), typeof value === 'string' ? value : JSON.stringify(value));
+                }
+            } catch(e) {}
+            return true;
+        }
+    });
     
     window.stockChartInstance = null;
     window.statusChartInstance = null;
@@ -1033,8 +1069,8 @@
     setInterval(updateClock, 1000);
 
     // --- 3. API HANDLER & SHARED PROMISE ---
-    async function api(action, payload = {}, retries = 1) {
-        const isBackground = ['getMaterials', 'getBOM', 'getReports', 'getGlobalTheme'].includes(action);
+    async function api(action, payload = {}, retries = 2) {
+        const isBackground = ['getMaterials', 'getBOM', 'getReports', 'getGlobalTheme', 'getInitialData'].includes(action);
         const showOverlay = !isBackground;
         if (showOverlay) {
             const el = document.getElementById('loadingOverlay');
@@ -1051,12 +1087,22 @@
                         .apiHandler({ action, payload });
                 });
             } else {
-                const res = await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    redirect: 'follow',
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({ action: action, payload: payload })
-                });
+                // AbortController with 28s timeout (GAS takes ~10-12s on cold start)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 28000);
+
+                let res;
+                try {
+                    res = await fetch(WEB_APP_URL, {
+                        method: 'POST',
+                        redirect: 'follow',
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({ action: action, payload: payload }),
+                        signal: controller.signal
+                    });
+                } finally {
+                    clearTimeout(timeoutId);
+                }
                 
                 // WebKit Safe response reading
                 const rawText = await res.text();
@@ -1067,7 +1113,7 @@
                     console.warn(`[api] Action "${action}" non-JSON response:`, rawText ? rawText.slice(0, 150) : '(empty)');
                     if (action === 'getGlobalTheme') return null;
                     if (retries > 0) {
-                        await new Promise(r => setTimeout(r, 600));
+                        await new Promise(r => setTimeout(r, 1200));
                         return await api(action, payload, retries - 1);
                     }
                     throw new Error("เซิร์ฟเวอร์ตอบสนองไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง");
@@ -1093,20 +1139,31 @@
             // Never show toast for silent background theme sync
             if (action === 'getGlobalTheme') return null;
 
-            // Auto-retry once on mobile network drops (e.g. Load failed / socket reset)
-            if (retries > 0 && (err.name === 'TypeError' || String(err.message).includes('Load failed') || String(err.message).includes('Failed to fetch'))) {
-                await new Promise(r => setTimeout(r, 800));
+            // Auto-retry on mobile network drops (AbortError, TypeError, Load failed, Failed to fetch)
+            const isNetworkError = err.name === 'AbortError' || 
+                                   err.name === 'TypeError' || 
+                                   String(err.message).includes('Load failed') || 
+                                   String(err.message).includes('Failed to fetch') ||
+                                   String(err.message).includes('NetworkError');
+
+            if (retries > 0 && isNetworkError) {
+                const backoff = (3 - retries) * 1500; // Progressive backoff: 1.5s, 3s
+                await new Promise(r => setTimeout(r, backoff));
                 return await api(action, payload, retries - 1);
             }
 
             // User-friendly message instead of raw iOS WebKit technical jargon
             let userMsg = err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
-            if (userMsg.includes('Load failed') || userMsg.includes('Failed to fetch')) {
+            if (userMsg.includes('Load failed') || userMsg.includes('Failed to fetch') || err.name === 'AbortError') {
                 userMsg = 'การเชื่อมต่ออินเทอร์เน็ตขัดข้อง กรุณาลองใหม่อีกครั้ง';
             } else if (userMsg.includes('did not match the expected pattern')) {
                 userMsg = 'เซิร์ฟเวอร์กำลังประมวลผล กรุณาลองใหม่อีกครั้ง';
             }
-            showToast(userMsg, 'error');
+
+            // Only show toast if it's NOT a silent background update or if action is login/mutation
+            if (!isBackground || action === 'login') {
+                showToast(userMsg, 'error');
+            }
             throw err;
         }
     }
@@ -1126,9 +1183,34 @@
         return bomPromise;
     }
 
+    // OPTIMIZATION: Unified dashboard fetcher (Bundled 1-shot or safe sequential fallback)
+    let dashboardDataPromise = null;
+    async function fetchDashboardData() {
+        if (dashboardDataPromise) return dashboardDataPromise;
+
+        dashboardDataPromise = (async () => {
+            // 1. Try unified getInitialData first to save round-trips and prevent connection drop
+            try {
+                const initRes = await api('getInitialData');
+                if (initRes && initRes.materials && initRes.bom) {
+                    return initRes;
+                }
+            } catch(e) {}
+
+            // 2. Sequential fallback to prevent concurrent POST redirect drops on mobile WebKit
+            const matData = await fetchMaterialsData();
+            const bomData = await fetchBOMData();
+            return { materials: matData, bom: bomData };
+        })().finally(() => {
+            dashboardDataPromise = null;
+        });
+
+        return dashboardDataPromise;
+    }
+
     // --- 4. AUTHENTICATION & INIT ---
     function initApp() {
-        loadGlobalTheme(); 
+        loadLocalTheme(); // Local only! Zero network overhead before login
         updateClock(); 
         
         const savedUserStr = sessionStorage.getItem('user_session');
@@ -1139,6 +1221,7 @@
                     setupUI();
                     const lastView = sessionStorage.getItem('last_view') || 'dashboard';
                     route(lastView);
+                    syncGlobalTheme(); // Silent background check after session is validated
                 } else {
                     throw new Error("Invalid session data");
                 }
@@ -1191,9 +1274,23 @@
             });
             state.user = user;
             sessionStorage.setItem('user_session', JSON.stringify(state.user));
+
+            // Instant data hydration if server returned bundled initialData
+            if (user && user.initialData) {
+                if (user.initialData.materials) {
+                    state.materials = user.initialData.materials;
+                    cache.materials = JSON.stringify(user.initialData.materials);
+                }
+                if (user.initialData.bom) {
+                    state.bom = user.initialData.bom;
+                    cache.bom = JSON.stringify(user.initialData.bom);
+                }
+            }
+
             setupUI();
             route('dashboard');
             showToast(`ยินดีต้อนรับเข้าสู่ระบบ, ${user.fullname.split(' ')[0]}`, 'success');
+            syncGlobalTheme();
         } catch (e) {}
     };
 
@@ -1320,61 +1417,75 @@
         return [];
     }
 
-    // Returns { "Type1": ["Cat1", "Cat2"], "Type2": ["Cat3"] }
+    // Get all unique Types across materials
+    function getUniqueTypes() {
+        let types = new Set();
+        if (!state.materials) return [];
+        state.materials.forEach(m => {
+            let tList = parseTypes(m.type || m.Type || m['ประเภท'] || m['type'] || '');
+            tList.forEach(t => {
+                if (t && String(t).trim()) types.add(String(t).trim());
+            });
+        });
+        return Array.from(types).sort();
+    }
+
+    // Get all unique Categories across materials (independent of type)
+    function getUniqueCategories() {
+        let cats = new Set();
+        if (!state.materials) return [];
+        state.materials.forEach(m => {
+            let c = String(m.category || m.Category || m['หมวดหมู่'] || m['หมวดหมู่ย่อย'] || m['category'] || '').trim();
+            if (c && c !== '-' && c !== 'undefined' && c !== 'null') {
+                cats.add(c);
+            }
+        });
+        return Array.from(cats).sort();
+    }
+
+    // Backwards compatibility map: returns { "Type1": Set(allCats) }
     function getUniqueTypesAndCategories() {
         let map = {};
-        if(!state.materials) return map;
-        state.materials.forEach(m => {
-            let types = parseTypes(m.type || m.Type || m['ประเภท'] || m['type'] || '');
-            let c = String(m.category || m.Category || m['หมวดหมู่'] || m['category'] || '').trim();
-            
-            types.forEach(t => {
-                if (t) {
-                    if (!map[t]) map[t] = new Set();
-                    if (c) map[t].add(c);
-                }
-            });
+        const allTypes = getUniqueTypes();
+        const allCats = getUniqueCategories();
+        allTypes.forEach(t => {
+            map[t] = new Set(allCats);
         });
         return map;
     }
 
-    // Update the dropdowns in the filters based on current data
-    function updateFilterDropdowns(selectedType = 'all') {
+    // Update the dropdowns in the filters - Types and Categories are completely independent
+    function updateFilterDropdowns() {
         const typeSelect = document.getElementById('filterType');
         const catSelect = document.getElementById('filterCategory');
         if (!typeSelect || !catSelect) return;
 
-        const map = getUniqueTypesAndCategories();
-        const types = Object.keys(map).sort();
+        const currentType = typeSelect.value || 'all';
+        const currentCat = catSelect.value || 'all';
 
-        // 1. Rebuild Type Dropdown
+        const types = getUniqueTypes();
+        const cats = getUniqueCategories();
+
+        // 1. Rebuild Type Dropdown (preserve active selection)
         let typeHtml = `<option value="all">ทุกประเภท (All Types)</option>`;
         types.forEach(t => {
-            typeHtml += `<option value="${t}" ${selectedType === t ? 'selected' : ''}>${t}</option>`;
+            typeHtml += `<option value="${t}" ${currentType === t ? 'selected' : ''}>${t}</option>`;
         });
         typeSelect.innerHTML = typeHtml;
+        if (types.includes(currentType)) typeSelect.value = currentType;
 
-        // 2. Rebuild Category Dropdown based on selected type
+        // 2. Rebuild Category Dropdown - ALL categories, NOT separated by type! (preserve active selection)
         let catHtml = `<option value="all">ทุกหมวดหมู่ (All Categories)</option>`;
-        if (selectedType !== 'all' && map[selectedType]) {
-            const cats = Array.from(map[selectedType]).sort();
-            cats.forEach(c => {
-                catHtml += `<option value="${c}">${c}</option>`;
-            });
-        } else if (selectedType === 'all') {
-             // If all types selected, show all unique categories
-             let allCats = new Set();
-             Object.values(map).forEach(catSet => catSet.forEach(c => allCats.add(c)));
-             Array.from(allCats).sort().forEach(c => {
-                 catHtml += `<option value="${c}">${c}</option>`;
-             });
-        }
+        cats.forEach(c => {
+            catHtml += `<option value="${c}" ${currentCat === c ? 'selected' : ''}>${c}</option>`;
+        });
         catSelect.innerHTML = catHtml;
+        if (cats.includes(currentCat)) catSelect.value = currentCat;
     }
 
     let currentSelectedTypes = [];
 
-    // Update the dropdowns in the Add/Edit Modal
+    // Update the dropdowns in the Add/Edit Modal (Categories are independent of Types)
     function updateModalDropdowns(selectedTypes = [], selectedCat = '') {
         currentSelectedTypes = Array.isArray(selectedTypes) ? selectedTypes : (selectedTypes ? [selectedTypes] : []);
         
@@ -1385,8 +1496,7 @@
         
         if(!typeSelect || !catSelect) return;
 
-        const map = getUniqueTypesAndCategories();
-        const types = Object.keys(map).sort();
+        const types = getUniqueTypes();
 
         // Populate Types Dropdown
         let typeHtml = `<option value="" disabled selected>-- เลือกหรือเพิ่มประเภท --</option>`;
@@ -1403,25 +1513,22 @@
         
         renderModalTypeTags();
 
-        // Populate Categories based on selected Types
-        let availableCats = new Set();
-        currentSelectedTypes.forEach(t => {
-            if (map[t]) map[t].forEach(c => availableCats.add(c));
-        });
-
+        // Populate Categories (All categories in the system, NOT separated by type!)
+        const allCats = getUniqueCategories();
         let catHtml = `<option value="" disabled ${!selectedCat ? 'selected' : ''}>-- เลือกหมวดหมู่ --</option>`;
-        Array.from(availableCats).sort().forEach(c => {
+        allCats.forEach(c => {
             catHtml += `<option value="${c}" ${selectedCat === c ? 'selected' : ''}>${c}</option>`;
         });
         catHtml += `<option value="NEW_CAT">+ เพิ่มหมวดหมู่ใหม่...</option>`;
         catSelect.innerHTML = catHtml;
 
         // Hide/Show custom cat input
-        if(selectedCat && !availableCats.has(selectedCat)) {
+        if (selectedCat && !allCats.includes(selectedCat)) {
              catSelect.value = 'NEW_CAT';
              catInput.value = selectedCat;
              catInput.classList.remove('hidden');
         } else {
+             if (selectedCat) catSelect.value = selectedCat;
              catInput.value = '';
              catInput.classList.add('hidden');
         }
@@ -1490,26 +1597,43 @@
                 <div class="h-80 bg-white rounded-2xl shadow-custom flex items-center justify-center"><div class="loader"></div></div>
             </div>`;
         
-        // Show cache first if both are available
+        // Instant render from persistent local cache if available (0.01s instant UI!)
+        let renderedFromCache = false;
         if (cache.materials && cache.bom) { 
-            state.materials = JSON.parse(cache.materials); 
-            state.bom = JSON.parse(cache.bom);
-            updateDashboardUI(c, viewID); 
+            try {
+                state.materials = typeof cache.materials === 'string' ? JSON.parse(cache.materials) : cache.materials; 
+                state.bom = typeof cache.bom === 'string' ? JSON.parse(cache.bom) : cache.bom;
+                updateDashboardUI(c, viewID); 
+                renderedFromCache = true;
+            } catch(e) {}
         }
         
         try {
-            // Background update using optimized safe fetch for both Materials and BOM
-            const [matData, bomData] = await Promise.all([
-                fetchMaterialsData(),
-                fetchBOMData()
-            ]);
+            // Background update using optimized safe fetch (unified bundled or sequential)
+            const initialData = await fetchDashboardData();
             if (currentViewID !== viewID) return; 
+
+            const matData = initialData.materials || [];
+            const bomData = initialData.bom || [];
+
+            const oldMatStr = typeof cache.materials === 'string' ? cache.materials : JSON.stringify(cache.materials || '');
+            const oldBomStr = typeof cache.bom === 'string' ? cache.bom : JSON.stringify(cache.bom || '');
+            const newMatStr = JSON.stringify(matData);
+            const newBomStr = JSON.stringify(bomData);
+            const dataChanged = oldMatStr !== newMatStr || oldBomStr !== newBomStr;
+
             state.materials = matData;
             state.bom = bomData;
-            cache.materials = JSON.stringify(matData);
-            cache.bom = JSON.stringify(bomData);
-            updateDashboardUI(c, viewID);
-        } catch(e) {}
+            cache.materials = newMatStr;
+            cache.bom = newBomStr;
+
+            // Only re-render if data actually changed or if not previously rendered from cache
+            if (!renderedFromCache || dataChanged) {
+                updateDashboardUI(c, viewID);
+            }
+        } catch(e) {
+            console.warn("Background dashboard fetch completed with warning:", e);
+        }
     }
 
     function updateDashboardUI(c, viewID) {
@@ -1517,7 +1641,7 @@
          
          const typeVal = document.getElementById('dashboardFilterType') ? document.getElementById('dashboardFilterType').value : 'all';
 
-         let filteredMaterials = state.materials;
+         let filteredMaterials = state.materials || [];
          if (typeVal !== 'all') {
              filteredMaterials = filteredMaterials.filter(m => {
                  const matTypes = parseTypes(m.type || m.Type || m['ประเภท'] || m['type'] || '');
@@ -1529,6 +1653,10 @@
          const outOfStock = filteredMaterials.filter(m => parseInt(m.qty || 0) === 0).length;
          const low = filteredMaterials.filter(m => parseInt(m.qty || 0) > 0 && parseInt(m.qty || 0) < 150).length;
          const normal = total - low - outOfStock;
+
+         const normalPercent = total > 0 ? Math.round((normal / total) * 100) : 0;
+         const lowPercent = total > 0 ? Math.round((low / total) * 100) : 0;
+         const outPercent = total > 0 ? Math.round((outOfStock / total) * 100) : 0;
 
          let maxTime = 0;
          filteredMaterials.forEach(m => {
@@ -1545,18 +1673,37 @@
          if (pinnedMaterials.length > 0) {
              let cards = '';
              pinnedMaterials.forEach(m => {
-                 const isOut = parseInt(m.qty || 0) === 0;
+                 const qtyNum = parseInt(m.qty || 0);
+                 const isOut = qtyNum === 0;
+                 const isLow = qtyNum > 0 && qtyNum < 150;
+                 const dispTypes = parseTypes(m.type || m.Type || m['ประเภท'] || m['type']);
+                 const dispCat = m.category || m.Category || m['หมวดหมู่'] || m['category'];
+                 
+                 let statusBadge = '';
+                 if (isOut) {
+                     statusBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">หมด</span>';
+                 } else if (isLow) {
+                     statusBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">ใกล้หมด</span>';
+                 } else {
+                     statusBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">พร้อมใช้</span>';
+                 }
+
                  cards += `
-                 <div class="dashboard-card p-4 rounded-2xl shadow-custom border border-custom flex items-center gap-4 cursor-pointer hover:-translate-y-1 transition transform" onclick="route('inventory')">
-                     <div class="w-12 h-12 rounded-xl p-1 flex items-center justify-center shrink-0" style="background: rgba(128,128,128,0.1);">
-                         <img src="${m.image_url || 'https://via.placeholder.com/150'}" class="max-w-full max-h-full object-contain drop-shadow-sm" onerror="this.src='https://via.placeholder.com/150?text=No+Image'">
+                 <div class="dashboard-card p-3.5 sm:p-4 rounded-2xl shadow-custom border border-custom flex items-center gap-3.5 cursor-pointer hover:-translate-y-1.5 hover:shadow-xl transition-all duration-200 group relative overflow-hidden" onclick="route('inventory')">
+                     <div class="absolute top-0 left-0 bottom-0 w-1 bg-amber-500"></div>
+                     <div class="w-12 h-12 rounded-xl p-1.5 flex items-center justify-center shrink-0 border border-custom bg-slate-50 group-hover:scale-105 transition-transform">
+                         <img src="${getThumbUrl(m.image_url, 120)}" class="max-w-full max-h-full object-contain drop-shadow-sm" onerror="onImgError(this)">
                      </div>
                      <div class="flex-1 min-w-0">
-                         <p class="font-bold text-sm text-gray-800 truncate">${m.name}</p>
-                         <p class="text-[10px] text-gray-500 truncate">${parseTypes(m.type || m.Type || m['ประเภท'] || m['type']).join(', ') || '-'} ${m.category ? `> ${m.category}` : ''}</p>
+                         <div class="flex items-center gap-1.5">
+                             <i class="fas fa-thumbtack text-amber-500 text-[10px] -rotate-45"></i>
+                             <p class="font-bold text-sm text-gray-800 truncate group-hover:text-primary-600 transition-colors" title="${m.name}">${m.name}</p>
+                         </div>
+                         <p class="text-[10px] text-gray-500 truncate mt-0.5">${dispTypes.join(', ') || '-'} ${dispCat ? `· ${dispCat}` : ''}</p>
                      </div>
                      <div class="text-right shrink-0">
-                         <span class="text-xl font-black ${isOut ? 'text-red-500' : 'text-primary-500'} drop-shadow-md">${m.qty}</span>${(m.units || m.Units) ? `<span class="text-xs font-bold ml-1 text-gray-500" style="text-shadow:none;">${m.units || m.Units}</span>` : ''}
+                         <span class="text-lg sm:text-xl font-black ${isOut ? 'text-rose-600' : 'text-primary-600'} leading-none count-up" data-target="${qtyNum}">${qtyNum.toLocaleString()}</span>${(m.units || m.Units) ? `<span class="text-xs font-medium ml-1 text-gray-400">${m.units || m.Units}</span>` : ''}
+                         <div class="mt-1">${statusBadge}</div>
                      </div>
                  </div>
                  `;
@@ -1564,9 +1711,14 @@
              
              pinnedHtml = `
              <div class="mb-8 fade-in">
-                 <div class="flex items-center gap-2 mb-4">
-                     <i class="fas fa-thumbtack text-amber-500 text-xl drop-shadow-md -rotate-45"></i>
-                     <h3 class="font-bold text-lg text-gray-800">รายการวัสดุที่ปักหมุด</h3>
+                 <div class="flex items-center justify-between mb-3.5">
+                     <div class="flex items-center gap-2">
+                         <div class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shadow-sm">
+                             <i class="fas fa-thumbtack text-xs -rotate-45"></i>
+                         </div>
+                         <h3 class="font-bold text-base sm:text-lg text-gray-800">รายการวัสดุที่ปักหมุด</h3>
+                     </div>
+                     <span class="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">${pinnedMaterials.length} รายการ</span>
                  </div>
                  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                      ${cards}
@@ -1575,7 +1727,7 @@
              `;
          }
 
-         // 2. BOM ESTIMATION SECTION USING new state.bom
+         // 2. BOM ESTIMATION SECTION
          const typeYields = {};
          let allTypes = [];
          state.materials.forEach(m => {
@@ -1584,7 +1736,7 @@
          const typesList = [...new Set(allTypes)].filter(t => t && t !== 'ไม่ได้ระบุประเภท');
          
          typesList.forEach(t => {
-             const bomItems = state.bom.filter(b => b.type === t);
+             const bomItems = state.bom ? state.bom.filter(b => b.type === t) : [];
              if (bomItems.length > 0) {
                  let minKits = Infinity;
                  let hasValidReq = false;
@@ -1611,27 +1763,36 @@
              for (const [t, yieldQty] of Object.entries(typeYields)) {
                  if (typeVal !== 'all' && t !== typeVal) continue;
                  cards += `
-                 <div class="bg-white p-4 rounded-2xl shadow-custom border border-custom flex items-center justify-between dashboard-card hover:-translate-y-1 transition transform cursor-pointer" onclick="route('production')">
+                 <div class="p-4 rounded-2xl shadow-custom border border-custom flex items-center justify-between dashboard-card hover:-translate-y-1.5 hover:shadow-xl transition-all duration-200 cursor-pointer group relative overflow-hidden" onclick="route('production')">
+                     <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary-500 to-indigo-500"></div>
                      <div class="flex items-center gap-3">
-                         <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-primary-500/30 text-primary-500" style="background: rgba(59,130,246,0.1);">
+                         <div class="w-11 h-11 rounded-xl flex items-center justify-center shadow-sm border border-primary-500/20 bg-primary-50 text-primary-600 group-hover:scale-110 transition-transform">
                              <i class="fas fa-boxes-packing text-lg"></i>
                          </div>
                          <div>
-                             <p class="font-bold text-sm text-gray-800">${t}</p>
-                             <p class="text-[10px] text-gray-500">ประเมินจากสูตร BOM</p>
+                             <p class="font-bold text-sm text-gray-800 group-hover:text-primary-600 transition-colors">${t}</p>
+                             <p class="text-[10px] text-gray-500">ประเมินจากสต๊อกและสูตร BOM</p>
                          </div>
                      </div>
                      <div class="text-right">
-                         <span class="text-3xl font-black ${yieldQty > 0 ? 'text-emerald-500' : 'text-red-500'} drop-shadow-sm">${yieldQty}</span>
-                         <span class="text-xs font-bold text-gray-400 ml-1">ชุด</span>
+                         <div class="flex items-baseline justify-end gap-1">
+                             <span class="text-2xl sm:text-3xl font-black ${yieldQty > 0 ? 'text-emerald-600' : 'text-rose-600'} leading-none count-up" data-target="${yieldQty}">0</span>
+                             <span class="text-xs font-bold text-gray-400">ชุด</span>
+                         </div>
+                         <span class="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${yieldQty > 0 ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-rose-100 text-rose-700 border border-rose-200'}">${yieldQty > 0 ? 'ผลิตได้ทันที' : 'วัตถุดิบไม่พอ'}</span>
                      </div>
                  </div>`;
              }
              bomHtml = `
              <div class="mb-8 fade-in">
-                 <div class="flex items-center gap-2 mb-4">
-                     <i class="fas fa-cogs text-primary-500 text-xl drop-shadow-md"></i>
-                     <h3 class="font-bold text-lg text-gray-800">คาดการณ์กำลังการผลิต (Test Kit)</h3>
+                 <div class="flex items-center justify-between mb-3.5">
+                     <div class="flex items-center gap-2">
+                         <div class="w-7 h-7 rounded-lg bg-primary-50 text-primary-600 border border-primary-200 flex items-center justify-center shadow-sm">
+                             <i class="fas fa-cogs text-xs"></i>
+                         </div>
+                         <h3 class="font-bold text-base sm:text-lg text-gray-800">คาดการณ์กำลังการผลิต (Test Kit)</h3>
+                     </div>
+                     <span class="text-xs font-bold text-primary-600 bg-primary-50 border border-primary-200 px-2.5 py-0.5 rounded-full">คลิกเพื่อดูสูตร BOM</span>
                  </div>
                  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                      ${cards}
@@ -1639,142 +1800,341 @@
              </div>`;
          }
 
-         const map = getUniqueTypesAndCategories();
-         const typeOptions = Object.keys(map).sort().map(t => `<option value="${t}" ${typeVal === t ? 'selected' : ''}>${t}</option>`).join('');
+         const allTypesList = getUniqueTypes();
+         const typeOptions = allTypesList.map(t => `<option value="${t}" ${typeVal === t ? 'selected' : ''}>${t}</option>`).join('');
 
          c.innerHTML = `
-            <div class="flex justify-between items-center mb-4 fade-in">
-                <h2 class="text-xl font-bold text-gray-800">สรุปข้อมูล</h2>
-                <select id="dashboardFilterType" onchange="updateDashboardUI(document.getElementById('contentArea'), '${viewID}')" class="py-2 px-3 rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary-500 outline-none shadow-custom cursor-pointer border border-custom" style="background: var(--card-bg); color: var(--text-main);">
-                    <option value="all" ${typeVal === 'all' ? 'selected' : ''}>ทุกประเภท (All Types)</option>
-                    ${typeOptions}
-                </select>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 fade-in">
+                <div>
+                    <h2 class="text-xl sm:text-2xl font-black text-gray-800 tracking-tight flex items-center gap-2">
+                        <span>ภาพรวมระบบสต๊อก</span>
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary-100 text-primary-700 border border-primary-200">Live</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-0.5">รายงานสถิติ ความพร้อมสต๊อก และการคาดการณ์กำลังผลิต</p>
+                </div>
+                <div class="flex items-center gap-2 self-end sm:self-auto">
+                    <label for="dashboardFilterType" class="text-xs font-bold text-gray-500 flex items-center gap-1.5">
+                        <i class="fas fa-filter text-primary-500"></i> กรองประเภท:
+                    </label>
+                    <select id="dashboardFilterType" onchange="updateDashboardUI(document.getElementById('contentArea'), '${viewID}')" class="py-2 px-3 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-primary-500 outline-none shadow-sm cursor-pointer border border-custom" style="background: var(--card-bg); color: var(--text-main);">
+                        <option value="all" ${typeVal === 'all' ? 'selected' : ''}>ทุกประเภท (All Types)</option>
+                        ${typeOptions}
+                    </select>
+                </div>
             </div>
+
             ${pinnedHtml}
             ${bomHtml}
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6 mb-8 fade-in">
-                ${statCard('ทั้งหมด', total, 'fas fa-boxes', 'text-primary-600')}
-                ${statCard('ปกติ', normal, 'fas fa-check-circle', 'text-emerald-600')}
-                ${statCard('ใกล้หมด', low, 'fas fa-exclamation-triangle', 'text-amber-500')}
-                ${statCard('หมด', outOfStock, 'fas fa-times-circle', 'text-red-500')}
-                ${statCard('อัปเดตล่าสุด', last, 'fas fa-clock', 'text-primary-600')}
+
+            <!-- 5 STAT METRIC CARDS WITH ANIMATED NUMBERS -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4 md:gap-6 mb-8 fade-in">
+                ${statCard('ทั้งหมด', total, 'fas fa-boxes', 'blue', '100%', 'all')}
+                ${statCard('ปกติ (พร้อมใช้)', normal, 'fas fa-check-circle', 'emerald', `${normalPercent}%`, 'all')}
+                ${statCard('ใกล้หมด', low, 'fas fa-exclamation-triangle', 'amber', `${lowPercent}%`, 'low')}
+                ${statCard('หมดสต๊อก', outOfStock, 'fas fa-times-circle', 'rose', `${outPercent}%`, 'out')}
+                ${statCard('อัปเดตล่าสุด', last, 'fas fa-clock', 'purple', 'บันทึก')}
             </div>
             
+            <!-- 3 CHARTS SECTION -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in mb-8">
                 <!-- TOP 5 Chart -->
-                <div class="bg-white p-5 md:p-6 rounded-2xl flex flex-col shadow-custom border-custom dashboard-card">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-bold text-base text-gray-800"><i class="fas fa-arrow-up text-emerald-500 mr-2 drop-shadow-md"></i> คงเหลือสูงสุด 5 อันดับ</h3>
+                <div class="bg-white p-5 md:p-6 rounded-2xl flex flex-col shadow-custom border border-custom dashboard-card hover:shadow-xl transition-all duration-200 relative overflow-hidden group">
+                    <div class="flex justify-between items-center mb-4 pb-3 border-b border-custom/60">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center shadow-sm">
+                                <i class="fas fa-chart-bar text-sm"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-sm sm:text-base text-gray-800">คงเหลือสูงสุด 5 อันดับ</h3>
+                                <p class="text-[10px] text-gray-400">Top 5 Highest Stock</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">พร้อมใช้</span>
                     </div>
-                    <div class="relative flex-1 min-h-[240px] w-full"><canvas id="stockChart"></canvas></div>
+                    <div class="relative flex-1 min-h-[260px] w-full"><canvas id="stockChart"></canvas></div>
                 </div>
                 
                 <!-- BOTTOM 5 Chart -->
-                 <div class="bg-white p-5 md:p-6 rounded-2xl flex flex-col shadow-custom border-custom dashboard-card">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-bold text-base text-gray-800"><i class="fas fa-arrow-down text-rose-500 mr-2 drop-shadow-md"></i> คงเหลือน้อยสุด 5 อันดับ</h3>
+                <div class="bg-white p-5 md:p-6 rounded-2xl flex flex-col shadow-custom border border-custom dashboard-card hover:shadow-xl transition-all duration-200 relative overflow-hidden group">
+                    <div class="flex justify-between items-center mb-4 pb-3 border-b border-custom/60">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shadow-sm">
+                                <i class="fas fa-exclamation-circle text-sm"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-sm sm:text-base text-gray-800">คงเหลือน้อยสุด 5 อันดับ</h3>
+                                <p class="text-[10px] text-gray-400">Lowest Stock Alerts</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">เฝ้าระวัง</span>
                     </div>
-                    <div class="relative flex-1 min-h-[240px] w-full"><canvas id="bottomStockChart"></canvas></div>
+                    <div class="relative flex-1 min-h-[260px] w-full"><canvas id="bottomStockChart"></canvas></div>
                 </div>
                 
                 <!-- STATUS Doughnut -->
-                <div class="bg-white p-5 md:p-6 rounded-2xl flex flex-col shadow-custom border-custom dashboard-card">
-                    <h3 class="font-bold text-base mb-4 text-gray-800"><i class="fas fa-chart-pie text-primary-500 mr-2 drop-shadow-md"></i> สถานะความพร้อมสต๊อก</h3>
-                    <div class="relative flex-1 min-h-[240px] w-full flex items-center justify-center"><canvas id="statusChart"></canvas></div>
+                <div class="bg-white p-5 md:p-6 rounded-2xl flex flex-col shadow-custom border border-custom dashboard-card hover:shadow-xl transition-all duration-200 relative overflow-hidden group">
+                    <div class="flex justify-between items-center mb-4 pb-3 border-b border-custom/60">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-primary-50 text-primary-600 border border-primary-200 flex items-center justify-center shadow-sm">
+                                <i class="fas fa-chart-pie text-sm"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-sm sm:text-base text-gray-800">สถานะความพร้อมสต๊อก</h3>
+                                <p class="text-[10px] text-gray-400">Inventory Readiness</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-primary-100 text-primary-700 border border-primary-200">${total.toLocaleString()} รายการ</span>
+                    </div>
+                    <div class="relative flex-1 min-h-[260px] w-full flex items-center justify-center"><canvas id="statusChart"></canvas></div>
                 </div>
             </div>
         `;
             
+         // Trigger count-up animation for all numeric values and percentage pills
+         triggerCountUpAnimations();
+
          const sortedByQtyDesc = [...filteredMaterials].sort((a,b) => parseInt(b.qty || 0) - parseInt(a.qty || 0));
          const sortedByQtyAsc = [...filteredMaterials].sort((a,b) => parseInt(a.qty || 0) - parseInt(b.qty || 0));
          
          const top5 = sortedByQtyDesc.slice(0, 5);
          const bottom5 = sortedByQtyAsc.slice(0, 5);
 
-         // Ensure charts load after DOM paints using setTimeout
+         // Ensure charts load with animated wave effect
          setTimeout(() => {
              if (currentViewID !== viewID) return;
+
+             // 1. TOP 5 BAR CHART WITH STAGGERED WAVE ANIMATION
              const ctx1 = document.getElementById('stockChart');
              if(ctx1) {
                  if (window.stockChartInstance) { window.stockChartInstance.destroy(); }
+                 const c1 = ctx1.getContext('2d');
+                 let gradientTop = 'rgba(16, 185, 129, 0.85)';
+                 try {
+                     gradientTop = c1.createLinearGradient(0, 0, 0, 250);
+                     gradientTop.addColorStop(0, '#10b981');
+                     gradientTop.addColorStop(1, '#06b6d4');
+                 } catch(e) {}
+
                  window.stockChartInstance = new Chart(ctx1, { 
                      type: 'bar', 
                      data: { 
-                         labels: top5.map(m => String(m.name || '').length > 15 ? String(m.name || '').substring(0,15)+'...' : String(m.name || '')), 
+                         labels: top5.map(m => String(m.name || '').length > 14 ? String(m.name || '').substring(0, 14) + '...' : String(m.name || '')), 
                          datasets: [{ 
                              label: 'จำนวนคงเหลือ', 
                              data: top5.map(m => parseInt(m.qty || 0)), 
-                             backgroundColor: 'rgba(16, 185, 129, 0.8)', 
-                             hoverBackgroundColor: 'rgba(16, 185, 129, 1)',
-                             borderRadius: 6 
+                             backgroundColor: gradientTop, 
+                             hoverBackgroundColor: '#059669',
+                             borderRadius: 8,
+                             borderSkipped: false,
+                             barPercentage: 0.65
                          }] 
                      }, 
                      options: { 
-                         animation: false, // Save performance
-                         maintainAspectRatio: false, 
-                         plugins: { legend: { display: false } }, 
+                         responsive: true,
+                         maintainAspectRatio: false,
+                         animation: {
+                             duration: 1200,
+                             easing: 'easeOutQuart',
+                             delay: (context) => {
+                                 let delay = 0;
+                                 if (context.type === 'data' && context.mode === 'default') {
+                                     delay = context.dataIndex * 140; // Wave animation!
+                                 }
+                                 return delay;
+                             }
+                         },
+                         plugins: { 
+                             legend: { display: false },
+                             tooltip: {
+                                 backgroundColor: '#1e293b',
+                                 titleFont: { family: 'Sarabun, sans-serif', size: 13, weight: 'bold' },
+                                 bodyFont: { family: 'Sarabun, sans-serif', size: 12 },
+                                 padding: 10,
+                                 cornerRadius: 8,
+                                 callbacks: {
+                                     title: (items) => top5[items[0].dataIndex]?.name || '',
+                                     label: (item) => ` คงเหลือ: ${item.raw.toLocaleString()} ${(top5[item.dataIndex]?.units || '')} (#อันดับ ${item.dataIndex + 1})`
+                                 }
+                             }
+                         }, 
                          scales: { 
-                             y: { beginAtZero: true, grid: { borderDash: [4, 4] } }, 
-                             x: { grid: { display: false } } 
+                             y: { 
+                                 beginAtZero: true, 
+                                 grid: { color: 'rgba(128, 128, 128, 0.1)', borderDash: [4, 4] },
+                                 ticks: { font: { family: 'Sarabun, sans-serif', size: 11 } }
+                             }, 
+                             x: { 
+                                 grid: { display: false },
+                                 ticks: { font: { family: 'Sarabun, sans-serif', size: 11, weight: 'bold' } }
+                             } 
                          } 
                      } 
                  });
              }
              
+             // 2. BOTTOM 5 BAR CHART WITH STAGGERED WAVE ANIMATION
              const ctxBottom = document.getElementById('bottomStockChart');
              if(ctxBottom) {
                  if (window.bottomChartInstance) { window.bottomChartInstance.destroy(); }
+                 const c2 = ctxBottom.getContext('2d');
+                 let gradientBottom = 'rgba(244, 63, 94, 0.85)';
+                 try {
+                     gradientBottom = c2.createLinearGradient(0, 0, 0, 250);
+                     gradientBottom.addColorStop(0, '#f43f5e');
+                     gradientBottom.addColorStop(1, '#f59e0b');
+                 } catch(e) {}
+
                  window.bottomChartInstance = new Chart(ctxBottom, { 
                      type: 'bar', 
                      data: { 
-                         labels: bottom5.map(m => String(m.name || '').length > 15 ? String(m.name || '').substring(0,15)+'...' : String(m.name || '')), 
+                         labels: bottom5.map(m => String(m.name || '').length > 14 ? String(m.name || '').substring(0, 14) + '...' : String(m.name || '')), 
                          datasets: [{ 
                              label: 'จำนวนคงเหลือ', 
                              data: bottom5.map(m => parseInt(m.qty || 0)), 
-                             backgroundColor: 'rgba(244, 63, 94, 0.8)', 
-                             hoverBackgroundColor: 'rgba(244, 63, 94, 1)',
-                             borderRadius: 6 
+                             backgroundColor: gradientBottom, 
+                             hoverBackgroundColor: '#e11d48',
+                             borderRadius: 8,
+                             borderSkipped: false,
+                             barPercentage: 0.65
                          }] 
                      }, 
                      options: { 
-                         animation: false, // Save performance
-                         maintainAspectRatio: false, 
-                         plugins: { legend: { display: false } }, 
+                         responsive: true,
+                         maintainAspectRatio: false,
+                         animation: {
+                             duration: 1200,
+                             easing: 'easeOutQuart',
+                             delay: (context) => {
+                                 let delay = 0;
+                                 if (context.type === 'data' && context.mode === 'default') {
+                                     delay = context.dataIndex * 140; // Wave animation!
+                                 }
+                                 return delay;
+                             }
+                         },
+                         plugins: { 
+                             legend: { display: false },
+                             tooltip: {
+                                 backgroundColor: '#1e293b',
+                                 titleFont: { family: 'Sarabun, sans-serif', size: 13, weight: 'bold' },
+                                 bodyFont: { family: 'Sarabun, sans-serif', size: 12 },
+                                 padding: 10,
+                                 cornerRadius: 8,
+                                 callbacks: {
+                                     title: (items) => bottom5[items[0].dataIndex]?.name || '',
+                                     label: (item) => ` คงเหลือ: ${item.raw.toLocaleString()} ${(bottom5[item.dataIndex]?.units || '')} (ใกล้หมด)`
+                                 }
+                             }
+                         }, 
                          scales: { 
-                             y: { beginAtZero: true, grid: { borderDash: [4, 4] } }, 
-                             x: { grid: { display: false } } 
+                             y: { 
+                                 beginAtZero: true, 
+                                 grid: { color: 'rgba(128, 128, 128, 0.1)', borderDash: [4, 4] },
+                                 ticks: { font: { family: 'Sarabun, sans-serif', size: 11 } }
+                             }, 
+                             x: { 
+                                 grid: { display: false },
+                                 ticks: { font: { family: 'Sarabun, sans-serif', size: 11, weight: 'bold' } }
+                             } 
                          } 
                      } 
                  });
              }
              
+             // 3. STATUS DOUGHNUT CHART WITH REALTIME COUNTING READINESS SCORE
              const ctx2 = document.getElementById('statusChart');
              if(ctx2) {
                  if (window.statusChartInstance) { window.statusChartInstance.destroy(); }
+                 const readinessPercent = total > 0 ? Math.round((normal / total) * 100) : 0;
+
+                 const centerDoughnutPlugin = {
+                     id: 'centerDoughnutPlugin',
+                     beforeDraw(chart) {
+                         const { width, height, ctx } = chart;
+                         ctx.save();
+                         ctx.textAlign = 'center';
+                         ctx.textBaseline = 'middle';
+                         
+                         // Realtime count-up synchronization with the doughnut sweep angle
+                         let progress = 1;
+                         const meta = chart.getDatasetMeta(0);
+                         if (meta && meta.data && meta.data.length > 0) {
+                             let totalCirc = 0;
+                             meta.data.forEach(arc => {
+                                 if (arc && typeof arc.circumference === 'number') {
+                                     totalCirc += arc.circumference;
+                                 }
+                             });
+                             if (totalCirc > 0 && totalCirc < 2 * Math.PI) {
+                                 progress = totalCirc / (2 * Math.PI);
+                             }
+                         }
+
+                         const currentPercent = Math.min(readinessPercent, Math.round(readinessPercent * progress));
+                         
+                         // Score
+                         ctx.font = '900 28px Sarabun, sans-serif';
+                         ctx.fillStyle = readinessPercent >= 80 ? '#10b981' : (readinessPercent >= 50 ? '#f59e0b' : '#ef4444');
+                         ctx.fillText(`${currentPercent}%`, width / 2, height / 2 - 12);
+                         
+                         // Label
+                         ctx.font = 'bold 11px Sarabun, sans-serif';
+                         ctx.fillStyle = '#64748b';
+                         ctx.fillText('พร้อมใช้งาน', width / 2, height / 2 + 16);
+                         ctx.restore();
+                     }
+                 };
+
                  window.statusChartInstance = new Chart(ctx2, { 
                      type: 'doughnut', 
                      data: { 
-                         labels: ['ปกติ', 'ใกล้หมด', 'หมด'], 
+                         labels: ['ปกติ (พร้อมใช้)', 'ใกล้หมดสต๊อก', 'หมดสต๊อก'], 
                          datasets: [{ 
                              data: [normal, low, outOfStock], 
-                             backgroundColor: ['rgba(16, 185, 129, 0.8)', 'rgba(245, 158, 11, 0.8)', 'rgba(239, 68, 68, 0.8)'], 
-                             borderWidth: 0,
-                             hoverOffset: 4
+                             backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], 
+                             hoverBackgroundColor: ['#059669', '#d97706', '#dc2626'],
+                             borderWidth: 2,
+                             borderColor: '#ffffff',
+                             hoverOffset: 8
                          }] 
                      }, 
+                     plugins: [centerDoughnutPlugin],
                      options: { 
-                         animation: false, // Save performance
+                         responsive: true,
                          maintainAspectRatio: false, 
-                         cutout: '75%', 
+                         cutout: '72%', 
+                         animation: {
+                             animateScale: true,
+                             animateRotate: true,
+                             duration: 1300,
+                             easing: 'easeOutCirc'
+                         },
                          plugins: { 
-                             legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } } 
+                             legend: { 
+                                 position: 'bottom', 
+                                 labels: { 
+                                     padding: 16, 
+                                     usePointStyle: true,
+                                     pointStyle: 'circle',
+                                     font: { family: 'Sarabun, sans-serif', size: 11, weight: 'bold' }
+                                 } 
+                             },
+                             tooltip: {
+                                 backgroundColor: '#1e293b',
+                                 titleFont: { family: 'Sarabun, sans-serif', size: 12, weight: 'bold' },
+                                 bodyFont: { family: 'Sarabun, sans-serif', size: 12 },
+                                 padding: 10,
+                                 cornerRadius: 8,
+                                 callbacks: {
+                                     label: (item) => ` ${item.label}: ${item.raw.toLocaleString()} รายการ (${total > 0 ? Math.round(item.raw / total * 100) : 0}%)`
+                                 }
+                             }
                          } 
                      } 
                  });
              }
-         }, 50);
+         }, 70);
     }
-
     function getFilteredInventory() {
         const searchInput = document.getElementById('searchInput');
         const filterStatus = document.getElementById('filterStatus');
@@ -1875,7 +2235,7 @@
                                 <i class="fas fa-list-ul"></i>
                             </button>
                         </div>
-                        <select id="filterType" onchange="document.getElementById('filterCategory').value='all'; updateFilterDropdowns(this.value); renderMaterialList('${mode}');" class="py-2 md:py-2.5 px-2 md:px-3 rounded-xl text-xs md:text-sm font-medium focus:ring-2 focus:ring-primary-500 outline-none transition cursor-pointer">
+                        <select id="filterType" onchange="renderMaterialList('${mode}');" class="py-2 md:py-2.5 px-2 md:px-3 rounded-xl text-xs md:text-sm font-medium focus:ring-2 focus:ring-primary-500 outline-none transition cursor-pointer">
                             <option value="all">ทุกประเภท (All Types)</option>
                         </select>
                         <select id="filterCategory" onchange="renderMaterialList('${mode}')" class="py-2 md:py-2.5 px-2 md:px-3 rounded-xl text-xs md:text-sm font-medium focus:ring-2 focus:ring-primary-500 outline-none transition cursor-pointer">
@@ -2210,14 +2570,11 @@
 
         if (!cache.materials || !cache.bom) {
             try {
-                const [matData, bomData] = await Promise.all([
-                    fetchMaterialsData(),
-                    fetchBOMData()
-                ]);
-                state.materials = matData;
-                state.bom = bomData;
-                cache.materials = JSON.stringify(matData);
-                cache.bom = JSON.stringify(bomData);
+                const initData = await fetchDashboardData();
+                state.materials = initData.materials;
+                state.bom = initData.bom;
+                cache.materials = JSON.stringify(initData.materials);
+                cache.bom = JSON.stringify(initData.bom);
             } catch(e) {}
         }
 
@@ -2347,11 +2704,11 @@
 
         if (!cache.materials || !cache.bom) {
             try {
-                const [matData, bomData] = await Promise.all([ fetchMaterialsData(), fetchBOMData() ]);
-                state.materials = matData;
-                state.bom = bomData;
-                cache.materials = JSON.stringify(matData);
-                cache.bom = JSON.stringify(bomData);
+                const initData = await fetchDashboardData();
+                state.materials = initData.materials;
+                state.bom = initData.bom;
+                cache.materials = JSON.stringify(initData.materials);
+                cache.bom = JSON.stringify(initData.bom);
             } catch(e) {}
         }
 
@@ -2598,14 +2955,11 @@
 
         if (!cache.materials || !cache.bom) {
             try {
-                const [matData, bomData] = await Promise.all([
-                    fetchMaterialsData(),
-                    fetchBOMData()
-                ]);
-                state.materials = matData;
-                state.bom = bomData;
-                cache.materials = JSON.stringify(matData);
-                cache.bom = JSON.stringify(bomData);
+                const initData = await fetchDashboardData();
+                state.materials = initData.materials;
+                state.bom = initData.bom;
+                cache.materials = JSON.stringify(initData.materials);
+                cache.bom = JSON.stringify(initData.bom);
             } catch(e) {}
         }
 
@@ -2735,19 +3089,17 @@
     }
 
     window.updateBOMCategoryDropdown = function() {
-        const type = document.getElementById('bomTypeSelect').value;
         const catSelect = document.getElementById('bomCategorySelect');
         if(!catSelect) return;
 
+        const currentCat = catSelect.value || 'all';
         let catHtml = `<option value="all">ทุกหมวดหมู่ (All Categories)</option>`;
-        const map = getUniqueTypesAndCategories();
-        
-        if (type && map[type]) {
-            Array.from(map[type]).sort().forEach(c => {
-                catHtml += `<option value="${c}">${c}</option>`;
-            });
-        }
+        const cats = getUniqueCategories();
+        cats.forEach(c => {
+            catHtml += `<option value="${c}" ${currentCat === c ? 'selected' : ''}>${c}</option>`;
+        });
         catSelect.innerHTML = catHtml;
+        if (cats.includes(currentCat)) catSelect.value = currentCat;
     };
     
     window.renderBOMList = function() {
@@ -3914,7 +4266,7 @@
             
             const mType = m.type || m.Type || m['ประเภท'] || '';
             const mTypes = parseTypes(mType);
-            const mCat = m.category || m.Category || m['หมวดหมู่ย่อย'] || m.category_name || '';
+            const mCat = m.category || m.Category || m['หมวดหมู่'] || m['หมวดหมู่ย่อย'] || m.category_name || '';
             
             updateModalDropdowns(mTypes, mCat);
         } else {
@@ -4172,7 +4524,7 @@
     function exportInventoryCSV() {
         const filteredData = getFilteredInventory();
         if (!filteredData || filteredData.length === 0) return showToast('ไม่มีข้อมูลที่จะส่งออก', 'error');
-        const c = "\uFEFFลำดับที่,ชื่อวัสดุ,ประเภท,หมวดหมู่ย่อย,ที่เก็บ,คงเหลือ,หน่วย,อัปเดตล่าสุด\n" + filteredData.map((m, index) => {
+        const c = "\uFEFFลำดับที่,ชื่อวัสดุ,ประเภท,หมวดหมู่,ที่เก็บ,คงเหลือ,หน่วย,อัปเดตล่าสุด\n" + filteredData.map((m, index) => {
             const loc = m.location || m.Location || m['ที่เก็บ'] || m['ชั้นวาง'] || '-';
             const matType = m.type || m.Type || m['ประเภท'] || '-';
             const matCat = m.category || m.Category || m['หมวดหมู่'] || '-';
@@ -4272,19 +4624,166 @@
         return `<div class="bg-white p-6 rounded-2xl shadow-custom border border-custom h-32 animate-pulse flex flex-col justify-between dashboard-card"><div class="h-4 bg-gray-200 rounded w-1/2 opacity-50"></div><div class="h-8 bg-gray-200 rounded w-1/3 opacity-50"></div></div>`; 
     }
     
-    function statCard(title, value, icon, colorClass) { 
+        // Quick filter navigation from dashboard cards
+    function navigateToInventoryWithFilter(status) {
+        route('inventory');
+        setTimeout(() => {
+            const filterStatus = document.getElementById('filterStatus');
+            if (filterStatus) {
+                filterStatus.value = status;
+                renderMaterialList('view');
+            }
+        }, 120);
+    }
+
+    // --- ANIMATED COUNT-UP FOR DASHBOARD NUMBERS ---
+    function triggerCountUpAnimations() {
+        // 1. Numeric Values (Integers)
+        const countElements = document.querySelectorAll('.count-up');
+        countElements.forEach(el => {
+            const rawTarget = el.getAttribute('data-target');
+            if (!rawTarget) return;
+            const target = parseInt(String(rawTarget).replace(/,/g, ''));
+            if (isNaN(target)) return;
+            if (target === 0) {
+                el.textContent = '0';
+                return;
+            }
+
+            const duration = 1100;
+            const startTime = performance.now();
+
+            function stepNumber(now) {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                // easeOutExpo
+                const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                const current = Math.floor(ease * target);
+                el.textContent = current.toLocaleString();
+
+                if (progress < 1) {
+                    requestAnimationFrame(stepNumber);
+                } else {
+                    el.textContent = target.toLocaleString();
+                }
+            }
+            requestAnimationFrame(stepNumber);
+        });
+
+        // 2. Percentage Badges (0% -> target%)
+        const percentElements = document.querySelectorAll('.count-up-percent');
+        percentElements.forEach(el => {
+            const rawTarget = el.getAttribute('data-target');
+            if (!rawTarget) return;
+            const target = parseInt(rawTarget);
+            if (isNaN(target)) return;
+            if (target === 0) {
+                el.textContent = '0%';
+                return;
+            }
+
+            const duration = 1200;
+            const startTime = performance.now();
+
+            function stepPercent(now) {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+                const current = Math.floor(ease * target);
+                el.textContent = `${current}%`;
+
+                if (progress < 1) {
+                    requestAnimationFrame(stepPercent);
+                } else {
+                    el.textContent = `${target}%`;
+                }
+            }
+            requestAnimationFrame(stepPercent);
+        });
+    }
+
+    function statCard(title, value, icon, colorType = 'blue', extraInfo = '', filterTarget = '') { 
+        const configs = {
+            'blue': {
+                border: 'hover:border-blue-400',
+                accent: 'bg-gradient-to-r from-blue-500 to-cyan-400',
+                lightBg: 'bg-blue-50 text-blue-600 border-blue-200',
+                textColor: 'text-blue-600',
+                glow: 'hover:shadow-blue-500/10'
+            },
+            'emerald': {
+                border: 'hover:border-emerald-400',
+                accent: 'bg-gradient-to-r from-emerald-500 to-teal-400',
+                lightBg: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+                textColor: 'text-emerald-600',
+                glow: 'hover:shadow-emerald-500/10'
+            },
+            'amber': {
+                border: 'hover:border-amber-400',
+                accent: 'bg-gradient-to-r from-amber-500 to-yellow-400',
+                lightBg: 'bg-amber-50 text-amber-600 border-amber-200',
+                textColor: 'text-amber-600',
+                glow: 'hover:shadow-amber-500/10'
+            },
+            'rose': {
+                border: 'hover:border-rose-400',
+                accent: 'bg-gradient-to-r from-rose-500 to-pink-500',
+                lightBg: 'bg-rose-50 text-rose-600 border-rose-200',
+                textColor: 'text-rose-600',
+                glow: 'hover:shadow-rose-500/10'
+            },
+            'purple': {
+                border: 'hover:border-purple-400',
+                accent: 'bg-gradient-to-r from-purple-500 to-indigo-500',
+                lightBg: 'bg-purple-50 text-purple-600 border-purple-200',
+                textColor: 'text-purple-600',
+                glow: 'hover:shadow-purple-500/10'
+            }
+        };
+
+        const cfg = configs[colorType] || configs['blue'];
+        const clickAttr = filterTarget ? `onclick="navigateToInventoryWithFilter('${filterTarget}')" style="cursor: pointer;"` : '';
+
+        // Check if value is numeric for count-up animation
+        const cleanValStr = String(value).replace(/,/g, '').trim();
+        const isNumeric = !isNaN(Number(cleanValStr)) && cleanValStr !== '';
+        
+        // Check if extraInfo is percentage for count-up
+        const isPercent = String(extraInfo).endsWith('%');
+        const percentNum = isPercent ? parseInt(extraInfo) : 0;
+        let extraSpan = '';
+        if (extraInfo) {
+            if (isPercent) {
+                extraSpan = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.lightBg} border ml-2 shrink-0 count-up-percent" data-target="${percentNum}">0%</span>`;
+            } else {
+                extraSpan = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.lightBg} border ml-2 shrink-0">${extraInfo}</span>`;
+            }
+        }
+
         return `
-        <div class="bg-white p-4 md:p-5 rounded-2xl shadow-custom border-custom flex items-center justify-between hover:-translate-y-1 transition transform dashboard-card">
-            <div class="truncate mr-2 overflow-hidden w-full">
-                <p class="text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-1 sm:mb-2 truncate text-gray-500">${title}</p>
-                <p class="text-lg sm:text-xl lg:text-2xl font-black break-words text-gray-800">${value}</p>
+        <div class="bg-white p-4 sm:p-5 rounded-2xl shadow-custom border border-custom flex flex-col justify-between hover:-translate-y-1.5 hover:shadow-xl ${cfg.glow} ${cfg.border} transition-all duration-200 group relative overflow-hidden dashboard-card" ${clickAttr}>
+            <!-- Top accent gradient bar -->
+            <div class="absolute top-0 left-0 right-0 h-1.5 ${cfg.accent} opacity-80 group-hover:opacity-100 transition-opacity"></div>
+            
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <span class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">${title}</span>
+                <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${cfg.lightBg} border flex items-center justify-center shrink-0 shadow-sm transition-transform duration-200 group-hover:scale-110">
+                    <i class="${icon} text-sm sm:text-base ${cfg.textColor}"></i>
+                </div>
             </div>
-            <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-[rgba(128,128,128,0.2)] flex items-center justify-center shadow-sm shrink-0 drop-shadow-md" style="background: var(--input-bg);">
-                <i class="${icon} text-lg sm:text-xl ${colorClass}"></i>
+
+            <div class="flex items-baseline justify-between mt-1">
+                <p class="text-xl sm:text-2xl lg:text-3xl font-black text-gray-800 tracking-tight leading-none ${isNumeric ? 'count-up' : ''}" ${isNumeric ? `data-target="${cleanValStr}"` : ''}>${isNumeric ? '0' : value}</p>
+                ${extraSpan}
             </div>
+
+            ${filterTarget ? `
+            <div class="mt-3 pt-2 border-t border-custom/60 flex items-center justify-between text-[10px] text-gray-400 group-hover:${cfg.textColor} transition-colors">
+                <span>ดูรายการวัสดุ</span>
+                <i class="fas fa-arrow-right text-[9px] transform group-hover:translate-x-1 transition-transform"></i>
+            </div>` : ''}
         </div>`; 
     }
-    
     function permissionDeniedHTML() { 
         return `
         <div class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
