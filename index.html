@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน กรมพัฒนาที่ดิน (v24 Instant Timeline & Zero Freeze Reports)</title>
+  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน สำนักวิทยาศาสตร์เพื่อการพัฒนาที่ดิน </title>
   
   <!-- ================= LIBRARIES ================= -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -838,6 +838,14 @@
           <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-palette text-primary-500 mr-2"></i> ตั้งค่ารูปแบบ UI/UX (Themes)</h3>
           <button type="button" onclick="closeModal('themeModal')" class="text-gray-500 hover:text-primary-500 transition"><i class="fas fa-times text-xl"></i></button>
         </div>
+        <!-- Theme Category Filter Tabs -->
+        <div class="px-6 py-3 border-b border-custom bg-gray-50/50 flex flex-wrap gap-2 items-center text-xs">
+            <span class="font-bold text-gray-600 mr-1"><i class="fas fa-filter text-primary-500"></i> หมวดหมู่:</span>
+            <button type="button" onclick="renderThemeCards('all')" id="tabThemeAll" class="theme-tab-btn active px-3 py-1.5 rounded-xl font-bold transition shadow-sm bg-primary-500 text-white">ทั้งหมด (<span id="themeCountAll">28</span>)</button>
+            <button type="button" onclick="renderThemeCards('glass')" id="tabThemeGlass" class="theme-tab-btn px-3 py-1.5 rounded-xl font-bold transition border border-pink-300 text-pink-700 bg-pink-50 hover:bg-pink-100 shadow-sm"><i class="fas fa-image mr-1"></i> ภาพพื้นหลังกระจกแก้ว (<span id="themeCountGlass">14</span>)</button>
+            <button type="button" onclick="renderThemeCards('light')" id="tabThemeLight" class="theme-tab-btn px-3 py-1.5 rounded-xl font-bold transition border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-sm"><i class="fas fa-sun mr-1 text-amber-500"></i> สว่าง & เรียบง่าย</button>
+            <button type="button" onclick="renderThemeCards('dark')" id="tabThemeDark" class="theme-tab-btn px-3 py-1.5 rounded-xl font-bold transition border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-sm"><i class="fas fa-moon mr-1 text-indigo-500"></i> มืด & ล้ำยุค</button>
+        </div>
         <div class="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 overflow-y-auto max-h-[65vh]" id="themeContainer">
            <!-- Generated via JS -->
         </div>
@@ -865,8 +873,164 @@
             border: '#e2d5de', 
             p500: '#B30655', 
             icon: 'fas fa-seedling', 
-            desc: 'กลิ่นอายระบบตรวจสอบดินเพื่อการเกษตร กรมพัฒนาที่ดิน (osd101.ldd.go.th)', 
+            desc: 'กลิ่นอายระบบตรวจสอบดิน กรมพัฒนาที่ดิน', 
             input: '#ffffff' 
+        },
+
+        // --- หมวดกระจกโปร่งแสงภาพพื้นหลังระดับพรีเมียม (Immersive Glassmorphism Backgrounds) ---
+        'sakura': { 
+            name: 'Pink Sakura', 
+            type: 'glass', 
+            bgImg: 'https://images.unsplash.com/photo-1522383225653-ed111181a951?q=80&w=2564', 
+            card: 'rgba(255,255,255,0.92)', 
+            text: '#831843', 
+            border: 'rgba(244,114,182,0.4)', 
+            p500: '#ec4899', 
+            icon: 'fas fa-fan', 
+            desc: 'กระจก ซากุระบานสะพรั่ง อ่อนหวานสดชื่น' 
+        },
+        'emerald_forest': { 
+            name: 'Emerald Forest', 
+            type: 'glass', 
+            bgImg: 'https://images.unsplash.com/photo-1448375240586-882707db888b?q=80&w=2564', 
+            card: 'rgba(255,255,255,0.92)', 
+            text: '#064e3b', 
+            border: 'rgba(16,185,129,0.35)', 
+            p500: '#059669', 
+            icon: 'fas fa-tree', 
+            desc: 'กระจก ป่าสนเขียวชอุ่ม สดชื่นสบายตา' 
+        },
+        'aurora_nordic': { 
+            name: 'Nordic Aurora', 
+            type: 'glass_dark', 
+            bgImg: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?q=80&w=2564', 
+            card: 'rgba(15,23,42,0.88)', 
+            text: '#f0fdfa', 
+            border: 'rgba(45,212,191,0.4)', 
+            p500: '#0d9488', 
+            icon: 'fas fa-wand-magic-sparkles', 
+            desc: 'กระจกดำ แสงเหนืออาร์กติก มหัศจรรย์ขั้วโลก' 
+        },
+        'cyber_tokyo': { 
+            name: 'Tokyo Cyber Night', 
+            type: 'glass_dark', 
+            bgImg: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?q=80&w=2564', 
+            card: 'rgba(15,15,32,0.88)', 
+            text: '#fdf4ff', 
+            border: 'rgba(168,85,247,0.45)', 
+            p500: '#a855f7', 
+            icon: 'fas fa-bolt', 
+            desc: 'กระจกดำ นีออนไซเบอร์โตเกียว ล้ำยุคเร้าใจ' 
+        },
+        'golden_autumn': { 
+            name: 'Golden Autumn', 
+            type: 'glass', 
+            bgImg: 'https://images.unsplash.com/photo-1476820865390-c52aeebb9891?q=80&w=2564', 
+            card: 'rgba(255,255,255,0.92)', 
+            text: '#78350f', 
+            border: 'rgba(245,158,11,0.4)', 
+            p500: '#d97706', 
+            icon: 'fas fa-leaf', 
+            desc: 'กระจก เมเปิ้ลสีทอง อบอุ่น นุ่มนวลตา' 
+        },
+        'lavender_field': { 
+            name: 'Provence Lavender', 
+            type: 'glass', 
+            bgImg: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=2564', 
+            card: 'rgba(255,255,255,0.92)', 
+            text: '#4c1d95', 
+            border: 'rgba(167,139,250,0.4)', 
+            p500: '#8b5cf6', 
+            icon: 'fas fa-spa', 
+            desc: 'กระจก ทุ่งลาเวนเดอร์ หรูหรา อ่อนโยน' 
+        },
+        'deep_ocean': { 
+            name: 'Deep Ocean', 
+            type: 'glass_dark', 
+            bgImg: 'https://images.unsplash.com/photo-1682687220063-4742bd7fd538?q=80&w=2564', 
+            card: 'rgba(12,28,48,0.88)', 
+            text: '#f0f9ff', 
+            border: 'rgba(56,189,248,0.4)', 
+            p500: '#0284c7', 
+            icon: 'fas fa-water', 
+            desc: 'กระจกดำ ลึกใต้สมุทรคราม เงียบสงบ มั่นคง' 
+        },
+        'cosmic_nebula': { 
+            name: 'Cosmic Nebula', 
+            type: 'glass_dark', 
+            bgImg: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?q=80&w=2564', 
+            card: 'rgba(18,12,36,0.88)', 
+            text: '#faf5ff', 
+            border: 'rgba(236,72,153,0.4)', 
+            p500: '#c084fc', 
+            icon: 'fas fa-meteor', 
+            desc: 'กระจกดำ เนบิวลาดาราจักร อลังการลึกลับ' 
+        },
+        'zen_bamboo': { 
+            name: 'Kyoto Zen Bamboo', 
+            type: 'glass', 
+            bgImg: 'https://images.unsplash.com/photo-1542051841857-5f90071e7989?q=80&w=2564', 
+            card: 'rgba(255,255,255,0.92)', 
+            text: '#365314', 
+            border: 'rgba(132,204,22,0.4)', 
+            p500: '#65a30d', 
+            icon: 'fas fa-yin-yang', 
+            desc: 'กระจก ป่าไผ่เกียวโต สงบ ร่มเย็น สไตล์เซน' 
+        },
+        'alpine_snow': { 
+            name: 'Alpine Summit', 
+            type: 'glass', 
+            bgImg: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=2564', 
+            card: 'rgba(255,255,255,0.92)', 
+            text: '#0c4a6e', 
+            border: 'rgba(125,211,252,0.45)', 
+            p500: '#0284c7', 
+            icon: 'fas fa-mountain', 
+            desc: 'กระจก เทือกเขาหิมะแอลป์ สดใส ปลอดโปร่ง' 
+        },
+        'sahara_sunset': { 
+            name: 'Sahara Sunset', 
+            type: 'glass_dark', 
+            bgImg: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?q=80&w=2564', 
+            card: 'rgba(38,20,15,0.88)', 
+            text: '#fff7ed', 
+            border: 'rgba(251,146,60,0.4)', 
+            p500: '#ea580c', 
+            icon: 'fas fa-fire', 
+            desc: 'กระจกดำ ตะวันตกดินซาฮาร่า โทนส้มทองอบอุ่น' 
+        },
+        'sunset': { 
+            name: 'Sunset Horizon', 
+            type: 'glass_dark', 
+            bgImg: 'https://images.unsplash.com/photo-1472120435266-53107fd0fd68?q=80&w=2564', 
+            card: 'rgba(24,24,27,0.9)', 
+            text: '#fff7ed', 
+            border: 'rgba(249,115,22,0.3)', 
+            p500: '#f97316', 
+            icon: 'fas fa-sun', 
+            desc: 'กระจกดำ แสงพระอาทิตย์อัสดง' 
+        },
+        'glass_blue': { 
+            name: 'Glass Blue', 
+            type: 'glass', 
+            bgImg: 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?q=80&w=2564', 
+            card: 'rgba(255,255,255,0.92)', 
+            text: '#0f172a', 
+            border: 'rgba(255,255,255,0.6)', 
+            p500: '#3b82f6', 
+            icon: 'fas fa-droplet', 
+            desc: 'กระจกใส ลวดลายเกลียวคลื่นสีฟ้า' 
+        },
+        'glass_dark': { 
+            name: 'Glass Dark', 
+            type: 'glass_dark', 
+            bgImg: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?q=80&w=2564', 
+            card: 'rgba(15,23,42,0.9)', 
+            text: '#f8fafc', 
+            border: 'rgba(255,255,255,0.15)', 
+            p500: '#3b82f6', 
+            icon: 'fas fa-moon', 
+            desc: 'กระจกฝ้า ราตรีคลาสสิก' 
         },
 
         // --- หมวดล้ำสมัยสไตล์สว่าง (Futuristic Light) ---
@@ -887,12 +1051,6 @@
         'purple': { name: 'Purple Violet', type: 'light', glass: false, bg: '#f5f3ff', card: '#ffffff', text: '#4c1d95', border: '#ddd6fe', p500: '#8b5cf6', icon: 'fas fa-gem', desc: 'โทนม่วงเรียบหรู', input: '#f5f3ff' },
         'coffee': { name: 'Coffee Earth', type: 'light', glass: false, bg: '#faf6f0', card: '#ffffff', text: '#4a362f', border: '#eaddd7', p500: '#8a655b', icon: 'fas fa-mug-hot', desc: 'น้ำตาลเอิร์ธโทน', input: '#faf6f0' },
         'ocean_solid': { name: 'Ocean Teal', type: 'light', glass: false, bg: '#ecfeff', card: '#ffffff', text: '#164e63', border: '#a5f3fc', p500: '#06b6d4', icon: 'fas fa-water', desc: 'ฟ้าครามเย็นตา', input: '#ecfeff' },
-        
-        // --- หมวดกระจกโปร่งแสง (Optimized Glassmorphism) ---
-        'glass_blue': { name: 'Glass Blue', type: 'glass', bgImg: 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?q=80&w=2564', card: 'rgba(255,255,255,0.9)', text: '#0f172a', border: 'rgba(255,255,255,0.6)', p500: '#3b82f6', icon: 'fas fa-droplet', desc: 'กระจกใส สีฟ้า' },
-        'glass_dark': { name: 'Glass Dark', type: 'glass_dark', bgImg: 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?q=80&w=2564', card: 'rgba(15,23,42,0.9)', text: '#f8fafc', border: 'rgba(255,255,255,0.15)', p500: '#3b82f6', icon: 'fas fa-moon', desc: 'กระจกฝ้า โหมดมืด' },
-        'sakura': { name: 'Pink Sakura', type: 'glass', bgImg: 'https://images.unsplash.com/photo-1522383225653-ed111181a951?q=80&w=2564', card: 'rgba(255,255,255,0.9)', text: '#831843', border: 'rgba(244,114,182,0.4)', p500: '#ec4899', icon: 'fas fa-fan', desc: 'กระจก ดอกซากุระ' },
-        'sunset': { name: 'Sunset Glass', type: 'glass_dark', bgImg: 'https://images.unsplash.com/photo-1472120435266-53107fd0fd68?q=80&w=2564', card: 'rgba(24,24,27,0.9)', text: '#fff7ed', border: 'rgba(249,115,22,0.3)', p500: '#f97316', icon: 'fas fa-sun', desc: 'กระจก พระอาทิตย์ตก' },
 
         // --- หมวดพิเศษ (Specialty) ---
         'neumorph': { name: 'Neumorphism', type: 'neumorph', glass: false, bg: '#e0e5ec', card: '#e0e5ec', text: '#4a5568', border: 'transparent', p500: '#3b82f6', icon: 'fas fa-dot-circle', desc: 'นูนลึก เนียนตา', input: '#e0e5ec' },
@@ -1079,25 +1237,69 @@
         }
     }
 
-    function openThemeModal() {
+    let currentThemeFilter = 'all';
+
+    function renderThemeCards(filter = 'all') {
+        currentThemeFilter = filter;
         const container = document.getElementById('themeContainer');
-        container.innerHTML = Object.keys(THEMES).map(k => {
+        if (!container) return;
+
+        // Update tab buttons
+        const tabs = ['all', 'glass', 'light', 'dark'];
+        tabs.forEach(t => {
+            const btn = document.getElementById('tabTheme' + t.charAt(0).toUpperCase() + t.slice(1));
+            if (btn) {
+                if (t === filter) {
+                    btn.className = 'theme-tab-btn active px-3 py-1.5 rounded-xl font-bold transition shadow-sm bg-primary-500 text-white';
+                } else if (t === 'glass') {
+                    btn.className = 'theme-tab-btn px-3 py-1.5 rounded-xl font-bold transition border border-pink-300 text-pink-700 bg-pink-50 hover:bg-pink-100 shadow-sm';
+                } else {
+                    btn.className = 'theme-tab-btn px-3 py-1.5 rounded-xl font-bold transition border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-sm';
+                }
+            }
+        });
+
+        const allKeys = Object.keys(THEMES);
+        const glassKeys = allKeys.filter(k => THEMES[k].type.includes('glass'));
+        
+        const countAll = document.getElementById('themeCountAll');
+        const countGlass = document.getElementById('themeCountGlass');
+        if (countAll) countAll.innerText = allKeys.length;
+        if (countGlass) countGlass.innerText = glassKeys.length;
+
+        const filteredKeys = allKeys.filter(k => {
+            const t = THEMES[k];
+            if (filter === 'all') return true;
+            if (filter === 'glass') return t.type.includes('glass');
+            if (filter === 'light') return !t.type.includes('glass') && t.type === 'light';
+            if (filter === 'dark') return !t.type.includes('glass') && (t.type === 'dark' || t.type === 'cyber' || t.type === 'brutal' || t.type === 'neumorph');
+            return true;
+        });
+
+        container.innerHTML = filteredKeys.map(k => {
             const t = THEMES[k];
             const isGlass = t.type.includes('glass');
             const bgStyle = isGlass ? `background: url('${t.bgImg}') center/cover;` : `background: ${t.bg}; border: 1px solid ${t.border};`;
             return `
-            <button onclick="saveTheme('${k}')" class="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border transition-all duration-300 outline-none ${currentTheme === k ? 'border-primary-500 bg-primary-500/10 scale-105 shadow-md ring-2 ring-primary-500/30' : 'border-custom hover:bg-black/5 hover:-translate-y-1 shadow-sm'}">
+            <button onclick="saveTheme('${k}')" class="flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all duration-300 outline-none ${currentTheme === k ? 'border-primary-500 bg-primary-500/10 scale-105 shadow-md ring-2 ring-primary-500/30' : 'border-custom hover:bg-black/5 hover:-translate-y-1 shadow-sm'}">
                 <div class="w-12 h-12 flex items-center justify-center rounded-xl text-white shadow-sm text-xl relative overflow-hidden" style="${bgStyle}">
                     ${isGlass ? '<div class="absolute inset-0 bg-black/40"></div>' : ''}
                     <i class="${t.icon} relative z-10 drop-shadow-md" style="color: ${isGlass ? '#fff' : t.p500}"></i>
                     ${currentTheme === k ? '<div class="absolute inset-0 bg-primary-500/50 flex items-center justify-center"><i class="fas fa-check text-white text-2xl drop-shadow-md z-20"></i></div>' : ''}
                 </div>
                 <div class="text-center text-gray-800">
-                    <p class="font-bold text-sm leading-tight">${t.name}</p>
+                    <p class="font-bold text-xs leading-tight flex items-center justify-center gap-1">
+                        ${t.name}
+                        ${isGlass ? '<span class="text-[9px] px-1 py-0.2 rounded bg-pink-500/20 text-pink-700 font-bold">Glass</span>' : ''}
+                    </p>
                     <p class="text-[10px] mt-0.5 leading-tight opacity-80 text-gray-500">${t.desc}</p>
                 </div>
             </button>
         `}).join('');
+    }
+
+    function openThemeModal() {
+        renderThemeCards(currentThemeFilter || 'all');
         document.getElementById('themeModal').classList.remove('hidden');
     }
 
@@ -1125,6 +1327,7 @@
         materials: null,
         bom: null,
         users: null,
+        logs: null,
         reports: null
     }, {
         get(target, prop) {
@@ -1200,7 +1403,7 @@
 
     // --- 3. API HANDLER & SHARED PROMISE ---
     async function api(action, payload = {}, retries = 2) {
-        const isBackground = ['getMaterials', 'getBOM', 'getReports', 'getGlobalTheme', 'getInitialData'].includes(action);
+        const isBackground = ['getMaterials', 'getBOM', 'getReports', 'getUsers', 'getLogs', 'getGlobalTheme', 'getInitialData'].includes(action);
         const showOverlay = !isBackground;
         if (showOverlay) {
             const el = document.getElementById('loadingOverlay');
@@ -1352,6 +1555,58 @@
             reportsPromise = null;
         });
         return reportsPromise;
+    }
+
+    // SHARED USERS FETCHER: โหลดทันที 0.01s จากแคช และแชร์ Promise ป้องกันการส่งคำขอซ้ำ
+    let usersPromise = null;
+    async function fetchUsersData(forceRefresh = false) {
+        if (!forceRefresh && cache.users && cache.users !== 'null') {
+            try {
+                const cached = typeof cache.users === 'string' ? JSON.parse(cache.users) : cache.users;
+                if (Array.isArray(cached) && cached.length > 0) {
+                    return cached;
+                }
+            } catch(e) {}
+        }
+        if (usersPromise) return usersPromise;
+        usersPromise = api('getUsers').then(data => {
+            if (Array.isArray(data)) {
+                cache.users = data;
+            }
+            return data || [];
+        }).catch(err => {
+            console.warn("fetchUsersData error:", err);
+            try { return typeof cache.users === 'string' ? JSON.parse(cache.users) : (cache.users || []); } catch(e) { return []; }
+        }).finally(() => {
+            usersPromise = null;
+        });
+        return usersPromise;
+    }
+
+    // SHARED LOGS FETCHER: โหลดทันที 0.01s จากแคช และแชร์ Promise ป้องกันการส่งคำขอซ้ำ
+    let logsPromise = null;
+    async function fetchLogsData(forceRefresh = false) {
+        if (!forceRefresh && cache.logs && cache.logs !== 'null') {
+            try {
+                const cached = typeof cache.logs === 'string' ? JSON.parse(cache.logs) : cache.logs;
+                if (Array.isArray(cached) && cached.length > 0) {
+                    return cached;
+                }
+            } catch(e) {}
+        }
+        if (logsPromise) return logsPromise;
+        logsPromise = api('getLogs').then(data => {
+            if (Array.isArray(data)) {
+                cache.logs = data;
+            }
+            return data || [];
+        }).catch(err => {
+            console.warn("fetchLogsData error:", err);
+            try { return typeof cache.logs === 'string' ? JSON.parse(cache.logs) : (cache.logs || []); } catch(e) { return []; }
+        }).finally(() => {
+            logsPromise = null;
+        });
+        return logsPromise;
     }
 
     // HIGH-SPEED DASHBOARD FETCHER: Ultra-fast parallel fetch via Promise.all (Zero getInitialData penalty)
@@ -4650,11 +4905,62 @@
         document.getElementById('loadingOverlay').classList.add('hidden');
         document.getElementById('loadingText').innerText = 'กำลังประมวลผลข้อมูลโปรดรอ...';
     }
+    // --- 9. VIEW: USERS (ADMIN ONLY - HIGH-SPEED 0.01s INSTANT LOAD) ---
+    function renderUserTableRows(users) {
+        if (!users || users.length === 0) {
+            return `<tr><td colspan="5" class="p-10 text-center font-medium text-gray-500">ไม่มีข้อมูลผู้ใช้งานในระบบ</td></tr>`;
+        }
+        return users.map(u => {
+            const isApproved = (u.status || u.Status) === 'approved';
+            const fullname = String(u.fullname || u.Fullname || u.name || u.Name || 'ผู้ใช้ใหม่');
+            const username = String(u.username || u.Username || '-');
+            const group = String(u.group || u.Group || '-');
+            const role = String(u.role || u.Role || 'user');
+            const uid = u.user_id || u['User ID'] || u.id || '';
 
-    // --- 9. VIEW: USERS (ADMIN ONLY) ---
-    async function renderUsers(c, viewID) {
+            return `
+            <tr class="transition group border-b border-custom hover:bg-black/5">
+                <td class="p-4 pl-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-inner border border-custom text-gray-600" style="background: var(--input-bg);">${fullname.charAt(0).toUpperCase()}</div>
+                        <div>
+                            <div class="font-bold text-base text-gray-800">${fullname}</div>
+                            <div class="text-xs font-mono mt-0.5 text-gray-500"><i class="fas fa-at text-[10px]"></i>${username}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="p-4">
+                    <span class="px-3 py-1 rounded-lg text-xs font-bold shadow-sm border border-custom text-gray-700" style="background: var(--input-bg);">${group}</span>
+                </td>
+                <td class="p-4 text-center">
+                    <div class="flex flex-col items-center justify-center">
+                        <label class="relative inline-flex items-center cursor-pointer group/switch">
+                          <input type="checkbox" class="sr-only peer toggle-checkbox" ${isApproved ? 'checked' : ''} onchange="toggleUserStatus('${uid}', this.checked)">
+                          <div class="w-12 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all toggle-label shadow-inner group-hover/switch:shadow-md"></div>
+                        </label>
+                        <span class="text-[10px] mt-1.5 font-black uppercase tracking-wider ${isApproved ? 'text-emerald-500 drop-shadow-md' : 'text-amber-500 drop-shadow-md'}">${isApproved ? 'อนุมัติแล้ว' : 'รอตรวจสอบ'}</span>
+                    </div>
+                </td>
+                <td class="p-4 text-center"><span class="px-3 py-1.5 rounded-lg text-[10px] font-black ${(role || '').toLowerCase()==='admin'?'bg-purple-100 text-purple-600 border border-purple-200':'bg-primary-100 text-primary-600 border border-primary-200'} uppercase tracking-widest shadow-sm drop-shadow-md">${role}</span></td>
+                <td class="p-4 text-right pr-6">
+                    <button onclick="openPermModalById('${uid}')" class="text-primary-600 hover:text-primary-700 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition transform active:scale-95 drop-shadow-sm border border-primary-500/30" style="background: rgba(59,130,246,0.1);"><i class="fas fa-user-shield mr-1"></i> กำหนดสิทธิ์</button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function renderUsers(c, viewID, forceRefresh = false) {
         if ((state.user.role||'').toLowerCase() !== 'admin') return c.innerHTML = permissionDeniedHTML();
         if (currentViewID !== viewID) return;
+        
+        let cachedUsers = null;
+        if (!forceRefresh && cache.users && cache.users !== 'null') {
+            try { cachedUsers = typeof cache.users === 'string' ? JSON.parse(cache.users) : cache.users; } catch(e) {}
+        }
+
+        const initialHtml = (cachedUsers && Array.isArray(cachedUsers) && cachedUsers.length > 0)
+            ? renderUserTableRows(cachedUsers)
+            : `<tr><td colspan="5" class="p-20 text-center"><div class="loader mx-auto"></div><p class="text-xs font-bold text-gray-500 mt-3">กำลังโหลดข้อมูลผู้ใช้งาน...</p></td></tr>`;
         
         c.innerHTML = `
             <div class="rounded-2xl shadow-custom border border-custom overflow-hidden fade-in flex flex-col h-full dashboard-card">
@@ -4663,10 +4969,16 @@
                         <div class="w-12 h-12 rounded-xl bg-primary-500/10 text-primary-500 flex items-center justify-center shadow-sm border border-primary-500/30"><i class="fas fa-users-cog text-2xl drop-shadow-md"></i></div>
                         <div>
                             <h3 class="font-bold text-xl leading-tight text-gray-800">จัดการผู้ใช้งานระบบ</h3>
-                            <p class="text-xs font-medium text-gray-500">อนุมัติและกำหนดสิทธิ์ผู้ใช้งาน</p>
+                            <p class="text-xs font-medium text-gray-500">อนุมัติและกำหนดสิทธิ์ผู้ใช้งาน <span id="userSyncBadge" class="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold ${cachedUsers && cachedUsers.length > 0 ? '' : 'hidden'}"><i class="fas fa-check-circle mr-0.5"></i> แคชพร้อมใช้</span></p>
                         </div>
                     </div>
-                    <button onclick="renderUsers(document.getElementById('contentArea'), '${viewID}')" class="transition px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-2 transform active:scale-95 border-custom text-gray-700" style="background: var(--input-bg);"><i class="fas fa-sync-alt"></i> โหลดข้อมูลใหม่</button>
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <input type="text" id="userSearchInput" oninput="onUserSearchInput(this.value)" placeholder="ค้นหาชื่อ, บัญชี, กลุ่มงาน..." class="pl-9 pr-3 py-2 rounded-xl text-xs border border-custom outline-none focus:ring-2 focus:ring-primary-500 w-48 sm:w-60" style="background: var(--input-bg);">
+                            <i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+                        </div>
+                        <button onclick="renderUsers(document.getElementById('contentArea'), '${viewID}', true)" class="transition px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transform active:scale-95 border-custom text-gray-700 hover:bg-black/5" style="background: var(--input-bg);"><i class="fas fa-sync-alt"></i> รีเฟรช</button>
+                    </div>
                 </div>
                 <div class="overflow-auto flex-1">
                     <table class="w-full text-left text-sm">
@@ -4674,80 +4986,112 @@
                             <tr><th class="p-4 pl-6 font-bold text-xs uppercase tracking-wider text-gray-600">บัญชีผู้ใช้งาน</th><th class="p-4 font-bold text-xs uppercase tracking-wider text-gray-600">กลุ่มงาน</th><th class="p-4 text-center font-bold text-xs uppercase tracking-wider text-gray-600">สิทธิ์เข้าใช้งาน</th><th class="p-4 text-center font-bold text-xs uppercase tracking-wider text-gray-600">ระดับผู้ใช้</th><th class="p-4 text-right pr-6 font-bold text-xs uppercase tracking-wider text-gray-600">การตั้งค่า</th></tr>
                         </thead>
                         <tbody id="userTableBody">
-                            <tr><td colspan="5" class="p-20 text-center"><div class="loader mx-auto"></div></td></tr>
+                            ${initialHtml}
                         </tbody>
                     </table>
                 </div>
             </div>`;
         
-        try {
-            const users = await api('getUsers');
+        fetchUsersData(forceRefresh).then(users => {
             if (currentViewID !== viewID) return;
-            cache.users = users; 
-            
             const tbody = document.getElementById('userTableBody');
-            if(!tbody) return;
-            
-            let htmlStr = '';
-            users.forEach(u => {
-                const isApproved = (u.status || u.Status) === 'approved';
-                const fullname = String(u.fullname || u.Fullname || u.name || u.Name || 'ผู้ใช้ใหม่');
-                const username = String(u.username || u.Username || '-');
-                const group = String(u.group || u.Group || '-');
-                const role = String(u.role || u.Role || 'user');
-                const uid = u.user_id || u['User ID'] || u.id || '';
+            const badge = document.getElementById('userSyncBadge');
+            if (tbody) {
+                tbody.innerHTML = renderUserTableRows(users);
+                if (badge) badge.classList.remove('hidden');
+            }
+        }).catch(e => {
+            if (!cachedUsers) {
+                const tbody = document.getElementById('userTableBody');
+                if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold"><i class="fas fa-exclamation-triangle mb-2 text-2xl"></i><br>เกิดข้อผิดพลาดในการโหลดข้อมูล: ${e.message}</td></tr>`;
+            }
+        });
+    }
 
-                htmlStr += `
-                <tr class="transition group border-b border-custom">
-                    <td class="p-4 pl-6">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-inner border border-custom text-gray-600" style="background: var(--input-bg);">${fullname.charAt(0).toUpperCase()}</div>
-                            <div>
-                                <div class="font-bold text-base text-gray-800">${fullname}</div>
-                                <div class="text-xs font-mono mt-0.5 text-gray-500"><i class="fas fa-at text-[10px]"></i>${username}</div>
-                            </div>
-                        </div>
-                    </td>
-                    <td class="p-4">
-                        <span class="px-3 py-1 rounded-lg text-xs font-bold shadow-sm border border-custom text-gray-700" style="background: var(--input-bg);">${group}</span>
-                    </td>
-                    <td class="p-4 text-center">
-                        <div class="flex flex-col items-center justify-center">
-                            <label class="relative inline-flex items-center cursor-pointer group/switch">
-                              <input type="checkbox" class="sr-only peer toggle-checkbox" ${isApproved ? 'checked' : ''} onchange="toggleUserStatus('${uid}', this.checked)">
-                              <div class="w-12 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all toggle-label shadow-inner group-hover/switch:shadow-md"></div>
-                            </label>
-                            <span class="text-[10px] mt-1.5 font-black uppercase tracking-wider ${isApproved ? 'text-emerald-500 drop-shadow-md' : 'text-amber-500 drop-shadow-md'}">${isApproved ? 'อนุญาตแล้ว' : 'รอตรวจสอบ'}</span>
-                        </div>
-                    </td>
-                    <td class="p-4 text-center"><span class="px-3 py-1.5 rounded-lg text-[10px] font-black ${(role || '').toLowerCase()==='admin'?'bg-purple-100 text-purple-600 border border-purple-200':'bg-primary-100 text-primary-600 border border-primary-200'} uppercase tracking-widest shadow-sm drop-shadow-md">${role}</span></td>
-                    <td class="p-4 text-right pr-6">
-                        <button onclick="openPermModalById('${uid}')" class="text-primary-600 hover:text-primary-700 px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition transform active:scale-95 drop-shadow-sm border border-primary-500/30" style="background: rgba(59,130,246,0.1);"><i class="fas fa-user-shield mr-1"></i> กำหนดสิทธิ์</button>
-                    </td>
-                </tr>`;
-            });
-            tbody.innerHTML = htmlStr;
-        } catch(e) {
-            const tbody = document.getElementById('userTableBody');
-            if(tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold"><i class="fas fa-exclamation-triangle mb-2 text-2xl"></i><br>เกิดข้อผิดพลาดในการโหลดข้อมูล: ${e.message}</td></tr>`;
+    function onUserSearchInput(q) {
+        const query = (q || '').trim().toLowerCase();
+        let uList = [];
+        try { uList = typeof cache.users === 'string' ? JSON.parse(cache.users) : (cache.users || []); } catch(e) {}
+        const tbody = document.getElementById('userTableBody');
+        if (!tbody) return;
+        if (!query) {
+            tbody.innerHTML = renderUserTableRows(uList);
+            return;
         }
+        const filtered = uList.filter(u => {
+            const fname = String(u.fullname || u.Fullname || u.name || '').toLowerCase();
+            const uname = String(u.username || u.Username || '').toLowerCase();
+            const group = String(u.group || u.Group || '').toLowerCase();
+            return fname.includes(query) || uname.includes(query) || group.includes(query);
+        });
+        tbody.innerHTML = renderUserTableRows(filtered);
     }
 
     async function toggleUserStatus(uid, isChecked) {
         const status = isChecked ? 'approved' : 'pending';
+        // Optimistic update in cache for 0ms instant UI response
+        if (cache.users) {
+            try {
+                let uList = typeof cache.users === 'string' ? JSON.parse(cache.users) : cache.users;
+                let found = uList.find(x => (x.user_id || x['User ID'] || x.id) == uid);
+                if (found) {
+                    found.status = status;
+                    cache.users = uList;
+                }
+            } catch(e) {}
+        }
         try {
             await api('updateUserStatus', { user_id: uid, status: status });
             showToast(`เปลี่ยนสถานะเป็น: ${status === 'approved' ? 'อนุมัติแล้ว' : 'รอตรวจสอบ'}`, 'success');
         } catch(e) {
-            renderUsers(document.getElementById('contentArea'), currentViewID); // Refresh to revert visual toggle on error
+            showToast('เกิดข้อผิดพลาด: ' + e.message, 'error');
+            renderUsers(document.getElementById('contentArea'), currentViewID, true); // Refresh to revert visual toggle on error
         }
     }
 
-    // --- 11. VIEW: LOGS (ADMIN ONLY) ---
-    async function renderLogs(c, viewID) {
+    // --- 11. VIEW: LOGS (ADMIN ONLY - HIGH-SPEED 0.01s INSTANT LOAD) ---
+    function renderLogsTableRows(logs) {
+        if (!logs || logs.length === 0) {
+             return `<tr><td colspan="5" class="p-10 text-center font-medium text-gray-500">ไม่มีข้อมูลประวัติการเข้าใช้งาน</td></tr>`;
+        }
+
+        return logs.map(log => {
+            const ts = log.timestamp || log.Timestamp || log['Timestamp'] || log.time || log.date || '';
+            const uid = log.user_id || log['User ID'] || log.userId || log.id || '';
+            const uname = log.username || log['Username'] || log.user || '';
+            const fname = log.fullname || log['Fullname'] || log.name || '';
+            const role = log.role || log['Role'] || log.level || '';
+
+            const formattedDate = ts ? formatDate(ts) : '-';
+            const displayUid = uid || '-';
+            const displayUname = uname || '-';
+            const displayFname = fname || '-';
+            const displayRole = role ? `<span class="px-2 py-1 rounded-md text-[10px] font-black ${role.toLowerCase() === 'admin' ? 'bg-purple-500/20 text-purple-600 border border-purple-200' : 'bg-primary-500/20 text-primary-600 border border-primary-200'} uppercase tracking-widest drop-shadow-md">${role}</span>` : '-';
+
+            return `
+            <tr class="transition group border-b border-custom hover:bg-black/5">
+                <td class="p-4 pl-6 font-medium text-gray-600">${formattedDate}</td>
+                <td class="p-4 font-mono text-xs text-gray-500">${displayUid}</td>
+                <td class="p-4 font-bold text-gray-800">${displayUname}</td>
+                <td class="p-4 text-gray-700">${displayFname}</td>
+                <td class="p-4">${displayRole}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function renderLogs(c, viewID, forceRefresh = false) {
         if ((state.user.role||'').toLowerCase() !== 'admin') return c.innerHTML = permissionDeniedHTML();
         if (currentViewID !== viewID) return;
         
+        let cachedLogs = null;
+        if (!forceRefresh && cache.logs && cache.logs !== 'null') {
+            try { cachedLogs = typeof cache.logs === 'string' ? JSON.parse(cache.logs) : cache.logs; } catch(e) {}
+        }
+
+        const initialHtml = (cachedLogs && Array.isArray(cachedLogs) && cachedLogs.length > 0)
+            ? renderLogsTableRows(cachedLogs)
+            : `<tr><td colspan="5" class="p-20 text-center"><div class="loader mx-auto"></div><p class="text-xs font-bold text-gray-500 mt-3">กำลังโหลดประวัติการเข้าใช้งาน...</p></td></tr>`;
+
         c.innerHTML = `
             <div class="rounded-2xl shadow-custom border border-custom overflow-hidden fade-in flex flex-col h-full dashboard-card">
                 <div class="p-5 border-b border-custom flex flex-col sm:flex-row justify-between items-center gap-4" style="background: rgba(128,128,128,0.05);">
@@ -4755,10 +5099,16 @@
                         <div class="w-12 h-12 rounded-xl text-gray-700 flex items-center justify-center shadow-sm border border-custom" style="background: var(--input-bg);"><i class="fas fa-history text-2xl drop-shadow-md"></i></div>
                         <div>
                             <h3 class="font-bold text-xl leading-tight text-gray-800">ประวัติการเข้าใช้งาน (System Logs)</h3>
-                            <p class="text-xs font-medium text-gray-500">บันทึกการเข้าสู่ระบบของผู้ใช้งาน</p>
+                            <p class="text-xs font-medium text-gray-500">บันทึกการเข้าสู่ระบบล่าสุด 250 รายการ <span id="logSyncBadge" class="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold ${cachedLogs && cachedLogs.length > 0 ? '' : 'hidden'}"><i class="fas fa-check-circle mr-0.5"></i> แคชพร้อมใช้</span></p>
                         </div>
                     </div>
-                    <button onclick="renderLogs(document.getElementById('contentArea'), '${viewID}')" class="transition px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-2 transform active:scale-95 border-custom text-gray-700" style="background: var(--input-bg);"><i class="fas fa-sync-alt"></i> โหลดข้อมูลใหม่</button>
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <input type="text" id="logSearchInput" oninput="onLogSearchInput(this.value)" placeholder="ค้นหาชื่อ, บัญชี, วันที่..." class="pl-9 pr-3 py-2 rounded-xl text-xs border border-custom outline-none focus:ring-2 focus:ring-primary-500 w-48 sm:w-60" style="background: var(--input-bg);">
+                            <i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+                        </div>
+                        <button onclick="renderLogs(document.getElementById('contentArea'), '${viewID}', true)" class="transition px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 transform active:scale-95 border-custom text-gray-700 hover:bg-black/5" style="background: var(--input-bg);"><i class="fas fa-sync-alt"></i> รีเฟรช</button>
+                    </div>
                 </div>
                 <div class="overflow-auto flex-1">
                     <table class="w-full text-left text-sm">
@@ -4772,52 +5122,45 @@
                             </tr>
                         </thead>
                         <tbody id="logsTableBody">
-                            <tr><td colspan="5" class="p-20 text-center"><div class="loader mx-auto"></div></td></tr>
+                            ${initialHtml}
                         </tbody>
                     </table>
                 </div>
             </div>`;
         
-        try {
-            const logs = await api('getLogs');
+        fetchLogsData(forceRefresh).then(logs => {
             if (currentViewID !== viewID) return;
-            
             const tbody = document.getElementById('logsTableBody');
-            if(!tbody) return;
-            
-            if (!logs || logs.length === 0) {
-                 tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center font-medium text-gray-500">ไม่มีข้อมูลประวัติการเข้าใช้งาน</td></tr>`;
-                 return;
+            const badge = document.getElementById('logSyncBadge');
+            if (tbody) {
+                tbody.innerHTML = renderLogsTableRows(logs);
+                if (badge) badge.classList.remove('hidden');
             }
+        }).catch(e => {
+            if (!cachedLogs) {
+                const tbody = document.getElementById('logsTableBody');
+                if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold"><i class="fas fa-exclamation-triangle mb-2 text-2xl"></i><br>เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
+            }
+        });
+    }
 
-            let htmlStr = '';
-            logs.forEach(log => {
-                const ts = log.timestamp || log.Timestamp || log['Timestamp'] || log.time || log.date || '';
-                const uid = log.user_id || log['User ID'] || log.userId || log.id || '';
-                const uname = log.username || log['Username'] || log.user || '';
-                const fname = log.fullname || log['Fullname'] || log.name || '';
-                const role = log.role || log['Role'] || log.level || '';
-
-                const formattedDate = ts ? formatDate(ts) : '-';
-                const displayUid = uid || '-';
-                const displayUname = uname || '-';
-                const displayFname = fname || '-';
-                const displayRole = role ? `<span class="px-2 py-1 rounded-md text-[10px] font-black ${role.toLowerCase() === 'admin' ? 'bg-purple-500/20 text-purple-600 border border-purple-200' : 'bg-primary-500/20 text-primary-600 border border-primary-200'} uppercase tracking-widest drop-shadow-md">${role}</span>` : '-';
-
-                htmlStr += `
-                <tr class="transition group border-b border-custom">
-                    <td class="p-4 pl-6 font-medium text-gray-600">${formattedDate}</td>
-                    <td class="p-4 font-mono text-xs text-gray-500">${displayUid}</td>
-                    <td class="p-4 font-bold text-gray-800">${displayUname}</td>
-                    <td class="p-4 text-gray-700">${displayFname}</td>
-                    <td class="p-4">${displayRole}</td>
-                </tr>`;
-            });
-            tbody.innerHTML = htmlStr;
-        } catch(e) {
-             const tbody = document.getElementById('logsTableBody');
-             if(tbody) tbody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-red-500 font-bold"><i class="fas fa-exclamation-triangle mb-2 text-2xl"></i><br>เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
+    function onLogSearchInput(q) {
+        const query = (q || '').trim().toLowerCase();
+        let lList = [];
+        try { lList = typeof cache.logs === 'string' ? JSON.parse(cache.logs) : (cache.logs || []); } catch(e) {}
+        const tbody = document.getElementById('logsTableBody');
+        if (!tbody) return;
+        if (!query) {
+            tbody.innerHTML = renderLogsTableRows(lList);
+            return;
         }
+        const filtered = lList.filter(log => {
+            const fname = String(log.fullname || log.Fullname || log.name || '').toLowerCase();
+            const uname = String(log.username || log.Username || log.user || '').toLowerCase();
+            const date = String(log.timestamp || log.Timestamp || '').toLowerCase();
+            return fname.includes(query) || uname.includes(query) || date.includes(query);
+        });
+        tbody.innerHTML = renderLogsTableRows(filtered);
     }
 
     // --- 10. MODAL LOGIC & FORMS ---
@@ -4893,12 +5236,28 @@
         if(document.getElementById('perm_manage_material').checked) p.push('manage_material');
         if(document.getElementById('perm_manage_bom') && document.getElementById('perm_manage_bom').checked) p.push('manage_bom');
         
+        // Optimistic update in cache for instant UI response
+        if (cache.users) {
+            try {
+                let uList = typeof cache.users === 'string' ? JSON.parse(cache.users) : cache.users;
+                let found = uList.find(x => (x.user_id || x['User ID'] || x.id) == uid);
+                if (found) {
+                    found.permissions = p;
+                    cache.users = uList;
+                }
+            } catch(e) {}
+        }
         try {
             await api('updateUserStatus', { user_id: uid, permissions: p });
             closeModal('userPermModal');
             showToast('บันทึกการตั้งค่าสิทธิ์ผู้ใช้งานเรียบร้อย', 'success');
-            api('getUsers').then(u => cache.users = u);
-        } catch(e){}
+            fetchUsersData(true).then(u => {
+                const tbody = document.getElementById('userTableBody');
+                if (tbody) tbody.innerHTML = renderUserTableRows(u);
+            });
+        } catch(e){
+            showToast('เกิดข้อผิดพลาดในการบันทึกสิทธิ์: ' + e.message, 'error');
+        }
     }
 
     function openChangePasswordModal() {
