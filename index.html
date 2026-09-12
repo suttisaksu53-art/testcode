@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน กรมพัฒนาที่ดิน (v12 Animated Dashboard)</title>
+  <title>ระบบจัดการสต๊อกวัสดุ Test Kit - กลุ่มวิจัยเคมีดิน กรมพัฒนาที่ดิน (v15 High-Speed Mobile & Zero-Blank Dashboard)</title>
   
   <!-- ================= LIBRARIES ================= -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -11,8 +11,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+  <!-- Deferred PDF export libraries: do not block mobile UI initial rendering -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
   
   <!-- ================= THEME CONFIGURATION ================= -->
   <script>
@@ -472,16 +473,22 @@
         <input type="hidden" id="matId">
         
         <div>
-          <label class="block text-sm font-bold mb-1 text-gray-700">ประเภท (Type) <span class="text-red-500">*</span></label>
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-sm font-bold text-gray-700">ประเภท (Type) <span class="text-red-500">*</span></label>
+            <span class="text-xs text-gray-500 font-normal">เลือกได้มากกว่า 1 ประเภท</span>
+          </div>
           <div id="matTypeTags" class="flex flex-wrap gap-2 mb-2"></div>
           <div class="flex flex-col gap-2">
               <div class="flex gap-2">
                   <select id="matTypeSelect" onchange="handleModalTypeChange()" class="flex-1 px-4 py-2 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition border-custom">
                     <!-- Injected via JS -->
                   </select>
-                  <button type="button" onclick="addModalType()" class="px-4 py-2 bg-primary-500 text-white rounded-xl font-bold hover:bg-primary-600 transition" title="เพิ่มประเภท"><i class="fas fa-plus"></i></button>
+                  <button type="button" onclick="addModalType()" class="px-4 py-2 bg-primary-500 text-white rounded-xl font-bold hover:bg-primary-600 transition shadow-sm flex items-center gap-1" title="เพิ่มประเภทที่เลือก"><i class="fas fa-plus"></i> เพิ่ม</button>
               </div>
-              <input type="text" id="matTypeNew" class="hidden w-full px-4 py-2 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition border-custom" placeholder="ระบุประเภทใหม่...">
+              <div id="matTypeNewWrapper" class="hidden flex gap-2">
+                  <input type="text" id="matTypeNew" onkeydown="if(event.key==='Enter'){event.preventDefault();addModalType();}" class="flex-1 px-4 py-2 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition border-custom" placeholder="พิมพ์ชื่อประเภทใหม่ แล้วกดเพิ่ม...">
+                  <button type="button" onclick="addModalType()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition shadow-sm whitespace-nowrap text-sm flex items-center gap-1"><i class="fas fa-check"></i> เพิ่ม</button>
+              </div>
           </div>
         </div>
 
@@ -1183,24 +1190,24 @@
         return bomPromise;
     }
 
-    // OPTIMIZATION: Unified dashboard fetcher (Bundled 1-shot or safe sequential fallback)
+    // HIGH-SPEED DASHBOARD FETCHER: Ultra-fast parallel fetch via Promise.all (Zero getInitialData penalty)
     let dashboardDataPromise = null;
     async function fetchDashboardData() {
         if (dashboardDataPromise) return dashboardDataPromise;
 
         dashboardDataPromise = (async () => {
-            // 1. Try unified getInitialData first to save round-trips and prevent connection drop
             try {
-                const initRes = await api('getInitialData');
-                if (initRes && initRes.materials && initRes.bom) {
-                    return initRes;
-                }
-            } catch(e) {}
-
-            // 2. Sequential fallback to prevent concurrent POST redirect drops on mobile WebKit
-            const matData = await fetchMaterialsData();
-            const bomData = await fetchBOMData();
-            return { materials: matData, bom: bomData };
+                const [matData, bomData] = await Promise.all([
+                    fetchMaterialsData(),
+                    fetchBOMData()
+                ]);
+                return { materials: matData || [], bom: bomData || [] };
+            } catch (err) {
+                console.warn("fetchDashboardData parallel error, fallback:", err);
+                const matData = await fetchMaterialsData().catch(() => []);
+                const bomData = await fetchBOMData().catch(() => []);
+                return { materials: matData || [], bom: bomData || [] };
+            }
         })().finally(() => {
             dashboardDataPromise = null;
         });
@@ -1290,7 +1297,8 @@
             setupUI();
             route('dashboard');
             showToast(`ยินดีต้อนรับเข้าสู่ระบบ, ${user.fullname.split(' ')[0]}`, 'success');
-            syncGlobalTheme();
+            // Defer background theme check by 3 seconds so initial dashboard loading has full unshared network bandwidth
+            setTimeout(syncGlobalTheme, 3000);
         } catch (e) {}
     };
 
@@ -1487,10 +1495,11 @@
 
     // Update the dropdowns in the Add/Edit Modal (Categories are independent of Types)
     function updateModalDropdowns(selectedTypes = [], selectedCat = '') {
-        currentSelectedTypes = Array.isArray(selectedTypes) ? selectedTypes : (selectedTypes ? [selectedTypes] : []);
+        currentSelectedTypes = Array.isArray(selectedTypes) ? [...selectedTypes] : (selectedTypes ? [selectedTypes] : []);
         
         const typeSelect = document.getElementById('matTypeSelect');
         const typeInput = document.getElementById('matTypeNew');
+        const typeWrapper = document.getElementById('matTypeNewWrapper');
         const catSelect = document.getElementById('matCatSelect');
         const catInput = document.getElementById('matCatNew');
         
@@ -1508,8 +1517,9 @@
         typeHtml += `<option value="NEW_TYPE">+ เพิ่มประเภทใหม่...</option>`;
         typeSelect.innerHTML = typeHtml;
         
-        typeInput.value = '';
-        typeInput.classList.add('hidden');
+        if (typeInput) typeInput.value = '';
+        if (typeWrapper) typeWrapper.classList.add('hidden');
+        else if (typeInput) typeInput.classList.add('hidden');
         
         renderModalTypeTags();
 
@@ -1537,10 +1547,14 @@
     function renderModalTypeTags() {
         const container = document.getElementById('matTypeTags');
         if (!container) return;
+        if (currentSelectedTypes.length === 0) {
+            container.innerHTML = `<span class="text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 flex items-center gap-1.5"><i class="fas fa-info-circle text-amber-500"></i> ยังไม่ได้เลือกประเภท (กรุณาเลือกประเภทจากรายการดรอปดาวน์ด้านล่าง)</span>`;
+            return;
+        }
         container.innerHTML = currentSelectedTypes.map((t, idx) => 
-            `<span class="px-3 py-1 bg-primary-100 text-primary-700 font-bold rounded-lg text-sm flex items-center gap-2 border border-primary-500/20 shadow-sm">
-                ${t}
-                <button type="button" onclick="removeModalType(${idx})" class="text-primary-500 hover:text-red-500 transition"><i class="fas fa-times"></i></button>
+            `<span class="px-3 py-1 bg-primary-50 text-primary-700 font-bold rounded-xl text-xs md:text-sm flex items-center gap-2 border border-primary-300 shadow-sm animate-fade-in">
+                <i class="fas fa-tag text-[10px] text-primary-500"></i> ${t}
+                <button type="button" onclick="removeModalType(${idx})" class="ml-1 text-primary-400 hover:text-red-500 transition focus:outline-none" title="ลบประเภทนี้"><i class="fas fa-times"></i></button>
             </span>`
         ).join('');
     }
@@ -1548,13 +1562,19 @@
     function addModalType() {
         const select = document.getElementById('matTypeSelect');
         const input = document.getElementById('matTypeNew');
+        if (!select) return;
         
-        let newType = select.value === 'NEW_TYPE' ? input.value.trim() : select.value;
-        if (!newType) return showToast('กรุณาระบุประเภท', 'error');
+        let newType = select.value === 'NEW_TYPE' ? (input ? input.value.trim() : '') : select.value;
+        if (!newType && input && !input.classList.contains('hidden')) {
+            newType = input.value.trim();
+        }
+        
+        if (!newType) return showToast('กรุณาระบุประเภท หรือเลือกประเภทจากรายการ', 'warning');
         if (currentSelectedTypes.includes(newType)) return showToast('ประเภทนี้ถูกเพิ่มแล้ว', 'warning');
         
         currentSelectedTypes.push(newType);
         updateModalDropdowns(currentSelectedTypes, document.getElementById('matCatSelect').value);
+        showToast(`เพิ่มประเภท "${newType}" แล้ว`, 'success');
     }
 
     function removeModalType(index) {
@@ -1565,12 +1585,29 @@
     function handleModalTypeChange() {
         const select = document.getElementById('matTypeSelect');
         const input = document.getElementById('matTypeNew');
+        const wrapper = document.getElementById('matTypeNewWrapper');
+        if (!select) return;
+
         if (select.value === 'NEW_TYPE') {
-            input.classList.remove('hidden');
-            input.focus();
-        } else {
-            input.classList.add('hidden');
-            input.value = '';
+            if (wrapper) wrapper.classList.remove('hidden');
+            else if (input) input.classList.remove('hidden');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+        } else if (select.value) {
+            if (wrapper) wrapper.classList.add('hidden');
+            else if (input) input.classList.add('hidden');
+            if (input) input.value = '';
+            
+            const selectedVal = select.value.trim();
+            if (selectedVal && !currentSelectedTypes.includes(selectedVal)) {
+                currentSelectedTypes.push(selectedVal);
+                renderModalTypeTags();
+                // Update dropdown list to exclude the newly chosen type
+                updateModalDropdowns(currentSelectedTypes, document.getElementById('matCatSelect').value);
+                showToast(`เลือกประเภท "${selectedVal}" เรียบร้อย`, 'success');
+            }
         }
     }
 
@@ -1589,12 +1626,10 @@
     // --- 6. VIEW: DASHBOARD ---
     async function renderDashboard(c, viewID) {
         c.innerHTML = `
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
-                ${cardSkeleton().repeat(4)}
-            </div>
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div class="lg:col-span-2 h-80 bg-white rounded-2xl shadow-custom flex items-center justify-center"><div class="loader"></div></div>
-                <div class="h-80 bg-white rounded-2xl shadow-custom flex items-center justify-center"><div class="loader"></div></div>
+            <div class="flex flex-col items-center justify-center min-h-[45vh] text-center p-6 fade-in">
+                <div class="w-12 h-12 rounded-full border-4 border-primary-500 border-t-transparent animate-spin mb-4 shadow-sm"></div>
+                <h3 class="font-bold text-base sm:text-lg text-gray-800 mb-1">กำลังโหลดข้อมูลภาพรวมระบบ...</h3>
+                <p class="text-xs text-gray-400">กรุณารอสักครู่ ระบบกำลังซิงค์ข้อมูลสต๊อกและรายงานล่าสุด</p>
             </div>`;
         
         // Instant render from persistent local cache if available (0.01s instant UI!)
@@ -2074,12 +2109,12 @@
                          
                          // Score
                          ctx.font = '900 28px Sarabun, sans-serif';
-                         ctx.fillStyle = readinessPercent >= 80 ? '#10b981' : (readinessPercent >= 50 ? '#f59e0b' : '#ef4444');
+                         ctx.fillStyle = '#10b981'; // Emerald
                          ctx.fillText(`${currentPercent}%`, width / 2, height / 2 - 12);
                          
                          // Label
                          ctx.font = 'bold 11px Sarabun, sans-serif';
-                         ctx.fillStyle = '#64748b';
+                         ctx.fillStyle = '#059669'; // Emerald text
                          ctx.fillText('พร้อมใช้งาน', width / 2, height / 2 + 16);
                          ctx.restore();
                      }
@@ -3569,21 +3604,6 @@
         doc.save(`${mode === 'production' ? 'ProductionPlan' : 'PurchasePlan'}_${window.currentPurchaseTitle}.pdf`);
     };
 
-    // Proxy function to avoid SyntaxError in HTML string
-    function openMaterialModalById(id) {
-        if (!id) {
-            openMaterialModal(null);
-            return;
-        }
-        const m = state.materials.find(x => x.material_id === id);
-        openMaterialModal(m);
-    }
-    
-    function openPermModalById(id) {
-        if (!cache.users) return;
-        const u = cache.users.find(x => (x.user_id || x['User ID'] || x.id) == id);
-        if (u) openPermModal(u);
-    }
 
     // --- BULK TRANSACTION LOGIC ---
     function addToCart(matId, mode) {
@@ -4329,11 +4349,28 @@
         const id = document.getElementById('matId').value;
         const fileInput = document.getElementById('matImgFile');
         
+        // --- 1. Auto-capture pending type from select or custom input ---
+        const typeSelect = document.getElementById('matTypeSelect');
+        const typeInput = document.getElementById('matTypeNew');
+        if (typeSelect && typeSelect.value === 'NEW_TYPE') {
+            const val = typeInput ? typeInput.value.trim() : '';
+            if (val && !currentSelectedTypes.includes(val)) {
+                currentSelectedTypes.push(val);
+            }
+        } else if (typeSelect && typeSelect.value && typeSelect.value !== 'NEW_TYPE') {
+            const val = typeSelect.value.trim();
+            if (val && !currentSelectedTypes.includes(val)) {
+                currentSelectedTypes.push(val);
+            }
+        }
+        
         if (currentSelectedTypes.length === 0) return showToast('กรุณาระบุอย่างน้อย 1 ประเภท', 'error');
         
         const catSelect = document.getElementById('matCatSelect');
         const catInput = document.getElementById('matCatNew');
-        const finalCat = catSelect.value === 'NEW_CAT' ? catInput.value.trim() : catSelect.value;
+        const finalCat = (catSelect && catSelect.value === 'NEW_CAT')
+            ? (catInput ? catInput.value.trim() : '')
+            : (catSelect ? catSelect.value : '');
 
         let payload = { 
             name: document.getElementById('matName').value, 
@@ -4866,7 +4903,12 @@
     }
 
 
-    window.onload = initApp;
+    // Instant DOM-ready boot on mobile: do not wait for background fonts/images before showing login
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+        initApp();
+    }
   </script>
 </body>
 </html>
